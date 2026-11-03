@@ -40,6 +40,13 @@ hls/
 *.webm
 *.ts
 *.m3u8
+*.mp3
+*.m4a
+*.wav
+*.flac
+*.ogg
+*.opus
+*.webp
 
 # Segredos e variáveis de ambiente (versionar apenas .env.example)
 .env

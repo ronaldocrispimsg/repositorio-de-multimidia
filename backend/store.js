@@ -132,7 +132,7 @@ function createStore(options = {}) {
       stream_url: streamUrl,
       download_url: patch.download_url !== undefined
         ? patch.download_url
-        : (current && current.download_url) || `/api/videos/${fileId}/file`,
+        : (current && current.download_url) || `/api/files/${fileId}/file`,
       occurred_at: patch.occurred_at || now,
       created_at: (current && current.created_at) || now,
       updated_at: now,

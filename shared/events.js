@@ -195,6 +195,7 @@ async function handleWorkerRetryOrFail({
 
   let failedPayload = null;
   if (event && (event.file_id || event.video_id)) {
+    const finalStatus = targetFailedEvent === EVENTS.FILE_REJECTED ? 'rejected' : 'failed';
     failedPayload = publishEvent(channel, targetFailedEvent, {
       file_id: event.file_id || event.video_id,
       type: resolvedType,
@@ -202,7 +203,7 @@ async function handleWorkerRetryOrFail({
       storage_key: event.storage_key || null,
       mime_type: event.mime_type || 'application/octet-stream',
       original_size: typeof event.original_size === 'number' ? event.original_size : 0,
-      status: 'failed',
+      status: finalStatus,
       result: null,
       error: errorMessage,
     });

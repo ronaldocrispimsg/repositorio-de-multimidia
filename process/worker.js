@@ -211,12 +211,14 @@ async function startVideoConsumer(channel) {
       const { streamUrl, thumbnailUrl, totalSize } = await uploadHlsToFiler(fileId, videoTempDir, playlistName);
       console.log(`[process] HLS disponível em ${streamUrl} (${totalSize} bytes)`);
 
+      const processedPlaylistKey = storage.videoKey(fileId, playlistName);
+
       publishEvent(channel, EVENTS.VIDEO_READY, {
         file_id: fileId,
         type: 'video',
         filename: event.filename || 'unnamed',
-        storage_key: storageKey,
-        mime_type: event.mime_type || 'video/mp4',
+        storage_key: processedPlaylistKey,
+        mime_type: 'application/vnd.apple.mpegurl',
         original_size: event.original_size || 0,
         status: 'ready',
         result: {
