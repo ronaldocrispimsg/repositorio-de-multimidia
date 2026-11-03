@@ -268,3 +268,4 @@ module.exports = {
   processImageMessage,
   startImageConsumer,
 };
+

@@ -199,3 +199,4 @@ test('Image: processImageMessage publica image.processing -> image.ready e apaga
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+

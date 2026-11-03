@@ -145,6 +145,25 @@ services:
       filer:
         condition: service_healthy
 
+  process-audio:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: videobox-process-audio
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: ./process/.env
+    environment:
+      WORKER_TYPE: audio
+      FILER_URL: http://filer:8888
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      filer:
+        condition: service_healthy
+
   repository:
     build:
       context: .
