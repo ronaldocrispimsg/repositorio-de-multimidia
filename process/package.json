@@ -4,7 +4,8 @@
   "description": "VideoBox Transcoding Worker Service in Node.js",
   "main": "worker.js",
   "scripts": {
-    "start": "node worker.js"
+    "start": "node worker.js",
+    "test": "node --test"
   },
   "dependencies": {
     "amqplib": "^0.10.4",

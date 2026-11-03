@@ -7,7 +7,7 @@ server {
     listen 80;
     server_name _;
 
-    # permitir uploads grandes vindos do frontend
+    # Permitir uploads grandes vindos do frontend
     client_max_body_size ${CLIENT_MAX_BODY_SIZE};
 
     proxy_set_header Host $host;
@@ -20,7 +20,7 @@ server {
         add_header Content-Type text/plain;
     }
 
-    # Frontend Next.js (rota padrão)
+    # Frontend estático (HTML/CSS/JS)
     location / {
         proxy_pass ${FRONTEND_UPSTREAM};
         proxy_http_version 1.1;
@@ -28,14 +28,21 @@ server {
         proxy_set_header Connection $connection_upgrade;
     }
 
-    # APIs (prefixo /api) são direcionadas ao backend FastAPI
+    # APIs REST (prefixo /api) direcionadas ao backend Node.js/Express em streaming
     location /api/ {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
+        proxy_request_buffering off;
     }
 
-    # Painel do RabbitMQ (HTTP + websockets em /ws)
+    # Streaming HLS (/streams/) servido pelo repository a partir do SeaweedFS Filer
+    location /streams/ {
+        proxy_pass ${REPOSITORY_UPSTREAM}/streams/;
+        proxy_http_version 1.1;
+    }
+
+    # Painel de gerenciamento do RabbitMQ (HTTP + websockets)
     location /message/ {
         proxy_pass ${RABBIT_UPSTREAM}/;
         proxy_http_version 1.1;

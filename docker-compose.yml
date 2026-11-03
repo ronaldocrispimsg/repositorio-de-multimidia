@@ -1,11 +1,58 @@
 services:
+  master:
+    image: chrislusf/seaweedfs:3.65
+    container_name: videobox-seaweed-master
+    restart: unless-stopped
+    command: "master -ip=master -ip.bind=0.0.0.0 -port=9333"
+    volumes:
+      - seaweed_master_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  volume:
+    image: chrislusf/seaweedfs:3.65
+    container_name: videobox-seaweed-volume
+    restart: unless-stopped
+    command: "volume -ip=volume -mserver=master:9333 -ip.bind=0.0.0.0 -port=8080 -dir=/data"
+    volumes:
+      - seaweed_volume_data:/data
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  filer:
+    image: chrislusf/seaweedfs:3.65
+    container_name: videobox-seaweed-filer
+    restart: unless-stopped
+    command: "filer -ip=filer -master=master:9333 -ip.bind=0.0.0.0 -port=8888"
+    volumes:
+      - seaweed_filer_data:/data
+    depends_on:
+      master:
+        condition: service_healthy
+      volume:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8888/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   rabbitmq:
     build: ./rabbitMQ
     container_name: videobox-rabbitmq
     env_file: ./rabbitMQ/.env
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -13,61 +60,82 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: videobox-backend
     user: "1000:1000"
     env_file: ./backend/.env
-    ports:
-      - "8000:8000"
+    environment:
+      FILER_URL: http://filer:8888
+      VIDEO_STATE_FILE: /data/videos_state.json
     volumes:
-      - ./backend/videos_raw:/videos_raw
+      - backend_state:/data
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      filer:
         condition: service_healthy
 
   frontend:
     build: ./frontend
     container_name: videobox-frontend
     env_file: ./frontend/.env
-    ports:
-      - "3000:3000"
     depends_on:
       - backend
 
   process:
-    build: ./process
+    build:
+      context: .
+      dockerfile: process/Dockerfile
     container_name: videobox-process
     user: "1000:1000"
     env_file: ./process/.env
-    volumes:
-      - ./process/export:/srv/videobox/export
+    environment:
+      FILER_URL: http://filer:8888
+      TMP_HLS: /tmp/hls
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
     depends_on:
       rabbitmq:
         condition: service_healthy
+      filer:
+        condition: service_healthy
 
   repository:
-    build: ./repository
+    build:
+      context: .
+      dockerfile: repository/Dockerfile
     container_name: videobox-repository
     user: "1000:1000"
     env_file: ./repository/.env
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./repository/processed_videos:/processed_videos
+    environment:
+      FILER_URL: http://filer:8888
     networks:
       default:
         aliases:
           - repo_stream
     depends_on:
-      - rabbitmq
+      filer:
+        condition: service_healthy
 
   gateway:
     build: ./nginx
     container_name: videobox-gateway
     env_file: ./nginx/.env
+    environment:
+      REPOSITORY_UPSTREAM: http://repository:8001
+      CLIENT_MAX_BODY_SIZE: 2G
     ports:
       - "80:80"
     depends_on:
       - frontend
       - backend
+      - repository
       - rabbitmq
+
+volumes:
+  seaweed_master_data:
+  seaweed_volume_data:
+  seaweed_filer_data:
+  backend_state:

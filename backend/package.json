@@ -4,10 +4,12 @@
   "description": "VideoBox Backend Service in Node.js",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "amqplib": "^0.10.4",
+    "axios": "^1.7.9",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
