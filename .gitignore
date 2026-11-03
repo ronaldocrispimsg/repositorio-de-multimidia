@@ -38,6 +38,18 @@ hls/
 *.ts
 *.m3u8
 
+# Segredos e variáveis de ambiente (versionar apenas .env.example)
+.env
+.env.*
+!.env.example
+
+# Metadados do Windows/WSL
+*:Zone.Identifier
+
+# Agente: histórico de chat e backups locais (privados)
+.agents/historico_chat/
+.agents/.backup-*/
+
 # Logs e Temporários
 *.log
 *.tmp
