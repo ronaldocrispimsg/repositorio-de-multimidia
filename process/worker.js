@@ -101,8 +101,31 @@ function runFFmpeg(sourcePath, playlistPath) {
   });
 }
 
+function extractVideoThumbnail(sourcePath, thumbPath) {
+  return new Promise((resolve) => {
+    const args = [
+      '-y',
+      '-ss', '00:00:00.500',
+      '-i', sourcePath,
+      '-frames:v', '1',
+      '-vf', 'scale=480:-2',
+      '-q:v', '4',
+      thumbPath,
+    ];
+
+    const proc = spawn('ffmpeg', args);
+    proc.on('close', (code) => {
+      resolve(code === 0 && fs.existsSync(thumbPath));
+    });
+    proc.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
 async function uploadHlsToFiler(fileId, sourceDir, playlistName) {
   let totalSize = 0;
+  let hasThumb = false;
 
   console.log(`[process] Enviando artefatos HLS de ${fileId} para o filer...`);
   for await (const filePath of getFiles(sourceDir)) {
@@ -110,12 +133,18 @@ async function uploadHlsToFiler(fileId, sourceDir, playlistName) {
     const stat = await fs.promises.stat(filePath);
     totalSize += stat.size;
 
+    if (relativePath === 'thumb.jpg') {
+      hasThumb = true;
+    }
+
     const targetKey = storage.videoKey(fileId, relativePath);
     const contentType = relativePath.endsWith('.m3u8')
       ? 'application/vnd.apple.mpegurl'
       : relativePath.endsWith('.ts')
         ? 'video/mp2t'
-        : 'application/octet-stream';
+        : relativePath.endsWith('.jpg')
+          ? 'image/jpeg'
+          : 'application/octet-stream';
 
     await storage.put(targetKey, fs.createReadStream(filePath), {
       contentType,
@@ -125,6 +154,7 @@ async function uploadHlsToFiler(fileId, sourceDir, playlistName) {
 
   return {
     streamUrl: `/streams/${fileId}/${playlistName}`,
+    thumbnailUrl: hasThumb ? `/streams/${fileId}/thumb.jpg` : null,
     totalSize,
   };
 }
@@ -173,10 +203,12 @@ async function startVideoConsumer(channel) {
 
       const playlistName = 'playlist.m3u8';
       const playlistPath = path.join(videoTempDir, playlistName);
+      const thumbPath = path.join(videoTempDir, 'thumb.jpg');
 
       await runFFmpeg(downloadedFile, playlistPath);
+      await extractVideoThumbnail(downloadedFile, thumbPath);
 
-      const { streamUrl, totalSize } = await uploadHlsToFiler(fileId, videoTempDir, playlistName);
+      const { streamUrl, thumbnailUrl, totalSize } = await uploadHlsToFiler(fileId, videoTempDir, playlistName);
       console.log(`[process] HLS disponível em ${streamUrl} (${totalSize} bytes)`);
 
       publishEvent(channel, EVENTS.VIDEO_READY, {
@@ -191,6 +223,7 @@ async function startVideoConsumer(channel) {
           url: streamUrl,
           size: totalSize,
           format: 'hls',
+          ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}),
         },
         error: null,
       });

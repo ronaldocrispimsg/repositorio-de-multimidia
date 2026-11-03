@@ -22,6 +22,8 @@ function guessStreamContentType(filePath) {
   if (ext === '.m3u8') return 'application/vnd.apple.mpegurl';
   if (ext === '.ts') return 'video/mp2t';
   if (ext === '.webp') return 'image/webp';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
   if (ext === '.m4a') return 'audio/mp4';
   if (ext === '.mp3') return 'audio/mpeg';
   return 'application/octet-stream';
@@ -52,7 +54,7 @@ app.get('/streams/:videoId/*', async (req, res) => {
     if (headers['content-length']) {
       res.setHeader('Content-Length', headers['content-length']);
     }
-    if (relativePath.endsWith('.ts')) {
+    if (relativePath.endsWith('.ts') || relativePath.endsWith('.jpg') || relativePath.endsWith('.webp')) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     } else {
       res.setHeader('Cache-Control', 'no-cache');

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VideoBox — Repositório Multimídia</title>
+  <title>VideoBox — Estúdio e Repositório Multimídia</title>
   <link rel="stylesheet" href="style.css">
   <!-- hls.js fixado na versão 1.5.17 para reprodução de streams .m3u8 -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
@@ -12,70 +12,152 @@
 
 <body>
 
-  <div class="container">
-    <header>
-      <h1>VideoBox</h1>
-      <p>Repositório Distribuído de Vídeos (HLS), Áudios (AAC/MP3) e Imagens (WebP ≤ 300 KB)</p>
-    </header>
-
-    <!-- Upload -->
-    <section class="card">
-      <h2>Enviar Novo Arquivo de Mídia</h2>
-      <form id="uploadForm">
-        <input
-          type="file"
-          id="mediaFileInput"
-          accept="video/*,audio/*,image/jpeg,image/png,image/webp"
-          required
-        >
-        <button type="submit" id="uploadBtn">Enviar</button>
-      </form>
-      <div id="uploadStatus" class="status-msg"></div>
-    </section>
-
-    <!-- Visualizador / Player Multimídia -->
-    <section class="card">
-      <h2>Visualizador de Mídia</h2>
-      <p id="playerCurrent">Selecione uma mídia pronta na lista abaixo para reproduzir ou visualizar.</p>
-
-      <!-- Player de Vídeo HLS -->
-      <div id="videoContainer" class="media-viewer-box" style="display: none;">
-        <video id="videoPlayer" controls playsinline></video>
-      </div>
-
-      <!-- Player de Áudio -->
-      <div id="audioContainer" class="media-viewer-box audio-box" style="display: none;">
-        <p id="audioMetaInfo" class="audio-meta"></p>
-        <audio id="audioPlayer" controls preload="metadata"></audio>
-      </div>
-
-      <!-- Visualizador de Imagem WebP -->
-      <div id="imageContainer" class="media-viewer-box image-box" style="display: none;">
-        <img id="imageViewer" alt="Visualização da imagem processada" loading="lazy">
-        <p id="imageMetaInfo" class="image-meta"></p>
-      </div>
-    </section>
-
-    <!-- Lista de Mídias -->
-    <section class="card">
-      <div class="card-header">
-        <h2>Arquivos Cadastrados</h2>
-        <div class="header-controls">
-          <select id="typeFilter" aria-label="Filtrar por tipo de mídia">
-            <option value="">Todos os tipos</option>
-            <option value="video">Vídeos</option>
-            <option value="audio">Áudios</option>
-            <option value="image">Imagens</option>
-          </select>
-          <button type="button" id="refreshBtn">Atualizar Lista</button>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>VideoBox</h1>
+          <p class="brand-sub">Pipeline de Vídeo HLS, Áudio AAC/MP3 e Imagem WebP</p>
         </div>
       </div>
-      <div id="videoListContainer">
-        <p id="loadingMsg">Carregando arquivos...</p>
-        <ul id="videoList" class="video-list"></ul>
+
+      <div class="stats-bar" aria-label="Resumo do acervo">
+        <div class="stat-pill">
+          <span class="stat-label">Total</span>
+          <strong id="statTotal">0</strong>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Prontos</span>
+          <strong id="statReady" class="stat-ok">0</strong>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Em fila</span>
+          <strong id="statPending" class="stat-warn">0</strong>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- Coluna Lateral: Upload Drag & Drop + Palco de Reprodução -->
+    <aside class="stage-column">
+      <!-- Upload Card -->
+      <section class="panel upload-panel" aria-labelledby="uploadHeading">
+        <div class="panel-head">
+          <h2 id="uploadHeading">Enviar Mídia</h2>
+          <span class="panel-hint">Máx: 2 GB vídeo · 200 MB áudio · 20 MB imagem</span>
+        </div>
+
+        <form id="uploadForm" novalidate>
+          <label for="mediaFileInput" id="dropzone" class="dropzone" tabindex="0">
+            <input
+              type="file"
+              id="mediaFileInput"
+              accept="video/*,audio/*,image/jpeg,image/png,image/webp"
+              required
+            >
+            <div id="dropzoneDefault" class="dropzone-Prompt">
+              <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                <path d="M12 16V4m0 0L8 8m4-4 4 4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>
+              </svg>
+              <span class="dropzone-title">Arraste um arquivo aqui ou clique para escolher</span>
+              <span class="dropzone-formats">MP4, WebM, MOV · MP3, M4A, WAV, FLAC, OGG · JPG, PNG, WebP</span>
+            </div>
+
+            <div id="localPreviewBox" class="local-preview" style="display: none;">
+              <div id="localPreviewThumb" class="local-preview-thumb"></div>
+              <div class="local-preview-meta">
+                <p id="localPreviewName" class="local-preview-name"></p>
+                <p id="localPreviewInfo" class="local-preview-info"></p>
+              </div>
+            </div>
+          </label>
+
+          <div class="upload-actions">
+            <button type="submit" id="uploadBtn" class="btn-primary">Enviar para o Pipeline</button>
+          </div>
+        </form>
+
+        <div id="uploadStatus" class="status-msg" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- Palco / Visualizador Multimídia -->
+      <section class="panel stage-panel" aria-labelledby="stageHeading">
+        <div class="panel-head">
+          <h2 id="stageHeading">Monitor de Inspeção</h2>
+          <span id="stageBadge" class="badge type-badge" style="display: none;"></span>
+        </div>
+
+        <p id="playerCurrent" class="stage-caption">Selecione um card na galeria ao lado para reproduzir ou inspecionar.</p>
+
+        <!-- Estado vazio do monitor -->
+        <div id="stageEmpty" class="stage-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="14" rx="2"/>
+            <path d="m10 9 5 3-5 3V9Z"/>
+          </svg>
+          <span>Nenhuma mídia ativa no monitor</span>
+        </div>
+
+        <!-- Player de Vídeo HLS -->
+        <div id="videoContainer" class="media-viewer-box" style="display: none;">
+          <video id="videoPlayer" controls playsinline></video>
+        </div>
+
+        <!-- Player de Áudio -->
+        <div id="audioContainer" class="media-viewer-box audio-box" style="display: none;">
+          <div class="audio-stage-header">
+            <canvas id="audioStageArt" width="120" height="120" class="audio-stage-canvas"></canvas>
+            <div class="audio-stage-text">
+              <p id="audioStageTitle" class="audio-stage-title"></p>
+              <p id="audioMetaInfo" class="audio-meta"></p>
+            </div>
+          </div>
+          <audio id="audioPlayer" controls preload="metadata"></audio>
+        </div>
+
+        <!-- Visualizador de Imagem WebP -->
+        <div id="imageContainer" class="media-viewer-box image-box" style="display: none;">
+          <div class="image-checkerboard">
+            <img id="imageViewer" alt="Visualização da imagem processada" loading="lazy">
+          </div>
+          <div class="image-stage-footer">
+            <p id="imageMetaInfo" class="image-meta"></p>
+            <a id="imageOpenRawLink" href="#" target="_blank" rel="noopener" class="btn-ghost">Abrir WebP em tamanho real</a>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Coluna Principal: Galeria com Miniaturas -->
+    <section class="gallery-column panel" aria-labelledby="galleryHeading">
+      <div class="gallery-toolbar">
+        <div class="filter-tabs" role="tablist" aria-label="Filtrar por tipo de mídia">
+          <button type="button" class="filter-tab active" data-type="" role="tab" aria-selected="true">Todos</button>
+          <button type="button" class="filter-tab" data-type="video" role="tab" aria-selected="false">Vídeos</button>
+          <button type="button" class="filter-tab" data-type="audio" role="tab" aria-selected="false">Áudios</button>
+          <button type="button" class="filter-tab" data-type="image" role="tab" aria-selected="false">Imagens</button>
+        </div>
+
+        <div class="toolbar-right">
+          <input
+            type="search"
+            id="searchInput"
+            class="search-input"
+            placeholder="Buscar por nome ou ID..."
+            aria-label="Buscar arquivo por nome ou ID"
+          >
+          <button type="button" id="refreshBtn" class="btn-secondary" title="Atualizar galeria">Atualizar</button>
+        </div>
+      </div>
+
+      <div id="videoListContainer" class="gallery-body">
+        <p id="loadingMsg" class="empty-gallery-msg">Carregando acervo...</p>
+        <ul id="videoList" class="media-grid"></ul>
       </div>
     </section>
-  </div>
+  </main>
 
   <script src="app.js"></script>
 </body>
