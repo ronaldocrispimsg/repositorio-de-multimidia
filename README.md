@@ -1,4 +1,4 @@
-# VideoBox
+# Repositório de Multimídia
 
 **Sistema Distribuído Orientado a Eventos para Upload, Processamento e Streaming de Vídeo (HLS), Áudio (AAC/MP3) e Imagem (WebP)**
 
@@ -6,7 +6,7 @@
 
 ## Contexto
 
-O **VideoBox** é um sistema distribuído em **Node.js (Express / CommonJS)** que recebe uploads de **vídeos, áudios e imagens**, armazena objetos em streaming no **SeaweedFS**, roteia e valida binários por *magic bytes* e `ffprobe`, processa cada tipo de mídia em workers independentes via **RabbitMQ** e entrega os artefatos com cache imutável e suporte a HTTP `Range` / HLS através de um **Gateway NGINX**.
+O **Repositório de Multimídia** é um sistema distribuído em **Node.js (Express / CommonJS)** que recebe uploads de **vídeos, áudios e imagens**, armazena objetos em streaming no **SeaweedFS**, roteia e valida binários por *magic bytes* e `ffprobe`, processa cada tipo de mídia em workers independentes via **RabbitMQ** e entrega os artefatos com cache imutável e suporte a HTTP `Range` / HLS através de um **Gateway NGINX**.
 
 ---
 

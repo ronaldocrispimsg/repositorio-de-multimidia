@@ -1,7 +1,7 @@
 services:
   master:
     image: chrislusf/seaweedfs:3.65
-    container_name: videobox-seaweed-master
+    container_name: repositorio-multimidia-seaweed-master
     restart: unless-stopped
     command: "master -ip=master -ip.bind=0.0.0.0 -port=9333"
     volumes:
@@ -15,7 +15,7 @@ services:
 
   volume:
     image: chrislusf/seaweedfs:3.65
-    container_name: videobox-seaweed-volume
+    container_name: repositorio-multimidia-seaweed-volume
     restart: unless-stopped
     command: "volume -ip=volume -mserver=master:9333 -ip.bind=0.0.0.0 -port=8080 -dir=/data"
     volumes:
@@ -32,7 +32,7 @@ services:
 
   filer:
     image: chrislusf/seaweedfs:3.65
-    container_name: videobox-seaweed-filer
+    container_name: repositorio-multimidia-seaweed-filer
     restart: unless-stopped
     command: "filer -ip=filer -master=master:9333 -ip.bind=0.0.0.0 -port=8888"
     volumes:
@@ -51,7 +51,7 @@ services:
 
   rabbitmq:
     build: ./rabbitMQ
-    container_name: videobox-rabbitmq
+    container_name: repositorio-multimidia-rabbitmq
     restart: unless-stopped
     env_file: ./rabbitMQ/.env
     healthcheck:
@@ -64,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: videobox-backend
+    container_name: repositorio-multimidia-backend
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./backend/.env
@@ -81,7 +81,7 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: videobox-frontend
+    container_name: repositorio-multimidia-frontend
     restart: unless-stopped
     env_file: ./frontend/.env
     depends_on:
@@ -91,7 +91,7 @@ services:
     build:
       context: .
       dockerfile: process/Dockerfile
-    container_name: videobox-process-router
+    container_name: repositorio-multimidia-process-router
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
@@ -115,7 +115,7 @@ services:
     build:
       context: .
       dockerfile: process/Dockerfile
-    container_name: videobox-process-video
+    container_name: repositorio-multimidia-process-video
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
@@ -140,7 +140,7 @@ services:
     build:
       context: .
       dockerfile: process/Dockerfile
-    container_name: videobox-process-image
+    container_name: repositorio-multimidia-process-image
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
@@ -164,7 +164,7 @@ services:
     build:
       context: .
       dockerfile: process/Dockerfile
-    container_name: videobox-process-audio
+    container_name: repositorio-multimidia-process-audio
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
@@ -188,7 +188,7 @@ services:
     build:
       context: .
       dockerfile: repository/Dockerfile
-    container_name: videobox-repository
+    container_name: repositorio-multimidia-repository
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./repository/.env
@@ -204,7 +204,7 @@ services:
 
   gateway:
     build: ./nginx
-    container_name: videobox-gateway
+    container_name: repositorio-multimidia-gateway
     restart: unless-stopped
     env_file: ./nginx/.env
     environment:

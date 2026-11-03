@@ -82,7 +82,7 @@ function formatDuration(sec) {
 
 function hashString(str) {
   let h = 2166136261;
-  const s = String(str || "videobox");
+  const s = String(str || "repositorio-multimidia");
   for (let i = 0; i < s.length; i += 1) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);

@@ -1,7 +1,7 @@
 {
-  "name": "videobox-process",
+  "name": "repositorio-multimidia-process",
   "version": "1.0.0",
-  "description": "VideoBox Transcoding Worker Service in Node.js",
+  "description": "Repositório de Multimídia Transcoding Worker Service in Node.js",
   "main": "worker.js",
   "scripts": {
     "start": "node worker.js",

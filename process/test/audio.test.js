@@ -108,7 +108,7 @@ test('Audio: Ramo 3 - WAV, FLAC, OGG ou MP3/AAC > 128k reencoda para AAC 128k (.
 });
 
 test('Audio: processAudioMessage publica audio.processing -> audio.ready com duration_sec e tags, e remove o raw', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-aud-worker-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-aud-worker-'));
   try {
     const fileId = '880e8400-e29b-41d4-a716-446655440002';
     const rawKey = `raw/${fileId}/original`;

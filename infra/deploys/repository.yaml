@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-repository
+  name: repositorio-multimidia-repository
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: videobox-repository
+      app: repositorio-multimidia-repository
   template:
     metadata:
       labels:
-        app: videobox-repository
+        app: repositorio-multimidia-repository
     spec:
       containers:
         - name: repository
-          image: videobox-repository:latest
+          image: repositorio-multimidia-repository:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -40,7 +40,7 @@ metadata:
   namespace: default
 spec:
   selector:
-    app: videobox-repository
+    app: repositorio-multimidia-repository
   ports:
     - protocol: TCP
       port: 8001

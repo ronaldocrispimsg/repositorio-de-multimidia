@@ -113,7 +113,7 @@ test('Image: rejeita GIF animado/estático', async () => {
 });
 
 test('Image: processImageMessage publica image.processing -> image.ready e apaga o raw do Filer', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-img-worker-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-img-worker-'));
   try {
     const fileId = '770e8400-e29b-41d4-a716-446655440001';
     const rawKey = `raw/${fileId}/original`;

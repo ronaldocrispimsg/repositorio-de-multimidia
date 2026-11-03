@@ -30,7 +30,7 @@ const {
 } = require('../storage');
 
 test('store: progressão normal, bloqueio de transições regressivas e idempotência', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-store-test-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-store-test-'));
   const stateFile = path.join(tmpDir, 'videos_state.json');
 
   try {

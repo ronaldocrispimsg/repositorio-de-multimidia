@@ -6,8 +6,8 @@ type: Opaque
 stringData:
   # PLACEHOLDER: não versionar a senha real. Antes do deploy, crie/atualize o Secret
   # fora do Git (kubectl create secret generic rabbitmq-secret --from-literal=host=<amqp-url>)
-  # ou use SealedSecrets/SOPS. Formato: amqp://videobox:<SENHA>@rabbitmq.default.svc.cluster.local:5672/
-  host: "amqp://videobox:CHANGE_ME@rabbitmq.default.svc.cluster.local:5672/"
+  # ou use SealedSecrets/SOPS. Formato: amqp://multimidia:<SENHA>@rabbitmq.default.svc.cluster.local:5672/
+  host: "amqp://multimidia:CHANGE_ME@rabbitmq.default.svc.cluster.local:5672/"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -25,22 +25,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-process-router
+  name: repositorio-multimidia-process-router
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: videobox-process-router
+      app: repositorio-multimidia-process-router
   template:
     metadata:
       labels:
-        app: videobox-process-router
+        app: repositorio-multimidia-process-router
     spec:
       nodeSelector:
         role: processor
       containers:
         - name: process-router
-          image: videobox-process:latest
+          image: repositorio-multimidia-process:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: WORKER_TYPE
@@ -73,12 +73,12 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: videobox-process-router-scaledobject
+  name: repositorio-multimidia-process-router-scaledobject
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: videobox-process-router
+    name: repositorio-multimidia-process-router
   minReplicaCount: 1          # Router mantém 1 réplica ativa para classificar uploads imediatamente (sem cold start)
   maxReplicaCount: 5
   cooldownPeriod: 60
@@ -99,22 +99,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-process-video
+  name: repositorio-multimidia-process-video
 spec:
   replicas: 0
   selector:
     matchLabels:
-      app: videobox-process-video
+      app: repositorio-multimidia-process-video
   template:
     metadata:
       labels:
-        app: videobox-process-video
+        app: repositorio-multimidia-process-video
     spec:
       nodeSelector:
         role: processor
       containers:
         - name: process-video
-          image: videobox-process:latest
+          image: repositorio-multimidia-process:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: WORKER_TYPE
@@ -149,12 +149,12 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: videobox-process-video-scaledobject
+  name: repositorio-multimidia-process-video-scaledobject
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: videobox-process-video
+    name: repositorio-multimidia-process-video
   minReplicaCount: 0          # Escala a 0 quando não há vídeos para transcodificar
   maxReplicaCount: 10         # Limite máximo de réplicas simultâneas de FFmpeg (HLS)
   cooldownPeriod: 60
@@ -175,22 +175,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-process-audio
+  name: repositorio-multimidia-process-audio
 spec:
   replicas: 0
   selector:
     matchLabels:
-      app: videobox-process-audio
+      app: repositorio-multimidia-process-audio
   template:
     metadata:
       labels:
-        app: videobox-process-audio
+        app: repositorio-multimidia-process-audio
     spec:
       nodeSelector:
         role: processor
       containers:
         - name: process-audio
-          image: videobox-process:latest
+          image: repositorio-multimidia-process:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: WORKER_TYPE
@@ -223,12 +223,12 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: videobox-process-audio-scaledobject
+  name: repositorio-multimidia-process-audio-scaledobject
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: videobox-process-audio
+    name: repositorio-multimidia-process-audio
   minReplicaCount: 0
   maxReplicaCount: 8
   cooldownPeriod: 60
@@ -249,22 +249,22 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-process-image
+  name: repositorio-multimidia-process-image
 spec:
   replicas: 0
   selector:
     matchLabels:
-      app: videobox-process-image
+      app: repositorio-multimidia-process-image
   template:
     metadata:
       labels:
-        app: videobox-process-image
+        app: repositorio-multimidia-process-image
     spec:
       nodeSelector:
         role: processor
       containers:
         - name: process-image
-          image: videobox-process:latest
+          image: repositorio-multimidia-process:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: WORKER_TYPE
@@ -297,12 +297,12 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: videobox-process-image-scaledobject
+  name: repositorio-multimidia-process-image-scaledobject
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: videobox-process-image
+    name: repositorio-multimidia-process-image
   minReplicaCount: 0
   maxReplicaCount: 8
   cooldownPeriod: 60

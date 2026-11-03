@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: videobox-gateway
+  name: repositorio-multimidia-gateway
   namespace: default
 spec:
   selector:
     matchLabels:
-      app: videobox-gateway
+      app: repositorio-multimidia-gateway
   template:
     metadata:
       labels:
-        app: videobox-gateway
+        app: repositorio-multimidia-gateway
     spec:
       nodeSelector:
         role: gateway
       containers:
         - name: gateway
-          image: registry.example.com/videobox/gateway:latest
+          image: registry.example.com/repositorio-multimidia/gateway:latest
           imagePullPolicy: Always
           env:
             - name: FRONTEND_UPSTREAM

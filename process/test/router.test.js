@@ -74,7 +74,7 @@ function createGifHeaderBuffer() {
 }
 
 test('Router: classifica imagem PNG e JPEG real -> image.uploaded', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-router-img-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-router-img-'));
   try {
     const pngPath = path.join(tmpDir, 'sample.png');
     const jpgPath = path.join(tmpDir, 'sample.jpg');
@@ -99,7 +99,7 @@ test('Router: classifica imagem PNG e JPEG real -> image.uploaded', async () => 
 });
 
 test('Router: classifica áudio MP3 (inclusive com capa attached_pic) -> audio.uploaded', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-router-aud-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-router-aud-'));
   try {
     const mp3Path = path.join(tmpDir, 'music.mp3');
     await fs.promises.writeFile(mp3Path, createFakeMp3HeaderBuffer(4096));
@@ -125,7 +125,7 @@ test('Router: classifica áudio MP3 (inclusive com capa attached_pic) -> audio.u
 });
 
 test('Router: classifica vídeo MP4 com codec H264 e AV1 -> video.uploaded', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-router-vid-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-router-vid-'));
   try {
     const mp4Path = path.join(tmpDir, 'clip.mp4');
     await fs.promises.writeFile(mp4Path, createFakeMp4HeaderBuffer(8192));
@@ -162,7 +162,7 @@ test('Router: classifica vídeo MP4 com codec H264 e AV1 -> video.uploaded', asy
 });
 
 test('Router: rejeita arquivo com extensão trocada (.txt renomeado para .png), GIF, corrompido e acima do limite', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-router-reject-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-router-reject-'));
   try {
     // 1. .txt renomeado para .png
     const fakePngPath = path.join(tmpDir, 'fake.png');
@@ -225,7 +225,7 @@ test('Router: rejeita arquivo com extensão trocada (.txt renomeado para .png), 
 });
 
 test('Router: processRouterMessage apaga raw do Filer e publica file.rejected em arquivo inválido', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videobox-router-msg-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repositorio-multimidia-router-msg-'));
   try {
     const fileId = '550e8400-e29b-41d4-a716-446655440099';
     const storageKey = `raw/${fileId}/original`;

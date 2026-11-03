@@ -1,4 +1,4 @@
-# Arquitetura do VideoBox
+# Arquitetura do Repositório de Multimídia
 
 Atualizado em 2026-11-03 (Fase 5: Workers Separados, K3s/KEDA, Frontend Multimídia e Documentação). Descreve o estado real comprovado no código.
 

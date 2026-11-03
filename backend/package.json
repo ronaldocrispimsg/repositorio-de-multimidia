@@ -1,7 +1,7 @@
 {
-  "name": "videobox-backend",
+  "name": "repositorio-multimidia-backend",
   "version": "1.0.0",
-  "description": "VideoBox Backend Service in Node.js",
+  "description": "Repositório de Multimídia Backend Service in Node.js",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
