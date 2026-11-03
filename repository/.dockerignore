@@ -1,2 +1,5 @@
+.env
+.env.*
+!.env.example
 node_modules
-processed_videos
+npm-debug.log
