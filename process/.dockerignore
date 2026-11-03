@@ -1,2 +1,5 @@
+.env
+.env.*
+!.env.example
 node_modules
-export
+npm-debug.log

@@ -1,53 +1,47 @@
-EVENTOS
+EVENTOS DO SISTEMA (Exchange Topic: `media.events`)
 
-1. `video.uploaded`
-   - Origem: backend
-   - Quem consome: process
-   - Payload:
-     ```
-     {
-       "video_id": "...",
-       "path": "/home/admin/videos_raw/<video_id>"
-     }
-     ```
-   - Disparado assim que o frontend envia um vídeo para o backend.
+Lista fechada de eventos (sem curingas):
+- `file.uploaded`
+- `file.rejected`
+- `video.uploaded`, `audio.uploaded`, `image.uploaded`
+- `video.processing`, `audio.processing`, `image.processing`
+- `video.ready`, `audio.ready`, `image.ready`
+- `video.failed`, `audio.failed`, `image.failed`
 
-2. `video.processing`
-   - Origem: process
-   - Quem consome: backend (opcional) + monitoramento
-   - Payload mínimo: `{ "video_id": "...", "status": "processing" }`
-   - Serve apenas para sinalizar que a conversão começou.
+Filas de trabalho (duráveis):
+- `file.uploaded` (binding: `file.uploaded`)
+- `video.uploaded` (binding: `video.uploaded` — monitorada pelo KEDA)
+- `audio.uploaded` (binding: `audio.uploaded`)
+- `image.uploaded` (binding: `image.uploaded`)
 
-3. `video.converted`
-   - Origem: process
-   - Quem consome: stream_repo
-   - Payload:
-     ```
-     {
-       "video_id": "...",
-       "status": "converted",
-       "export_path": "/srv/videobox/export/<video_id>",
-       "relative_path": "<video_id>",
-       "playlist_name": "playlist.m3u8",
-       "segments": ["000.ts", ...]
-     }
-     ```
-   - Enviado quando o FFMPEG termina. O diretório `export_path` está em um storage
-     compartilhado (EFS/NFS) para o repo_stream copiar.
+Fila de retorno ao backend (`media.backend`, durável):
+Recebe exatamente os 10 bindings explícitos (sem wildcard):
+- `video.processing`, `audio.processing`, `image.processing`
+- `video.ready`, `audio.ready`, `image.ready`
+- `video.failed`, `audio.failed`, `image.failed`
+- `file.rejected`
 
-4. `video.ready`
-   - Origem: stream_repo
-   - Quem consome: backend + frontend
-   - Payload:
-     ```
-     {
-       "video_id": "...",
-       "status": "ready",
-       "stream_url": "http://IP_STREAM/streams/<video_id>/playlist.m3u8"
-     }
-     ```
-   - Emitido depois que o repositório de stream copia o diretório exportado e publica a URL final.
+Topologia de Retry com Backoff Exponencial (DLX):
+- Exchange `media.retry` (topic, durável) -> fila `media.retry.wait` (durável, `x-dead-letter-exchange: media.events`).
+- Controle pelo header `x-retry-count` (até 3 tentativas; ao esgotar, publica `video.failed`, `audio.failed` ou `image.failed` e confirma com `ack`).
 
-Extensões futuras:
-   - `video.segment.ready`: process → stream_repo para enviar cada fragmento assim que estiver pronto
-     (útil se quisermos liberar trechos antes da conversão completa).
+Payload padrão (snake_case) em todos os eventos:
+```json
+{
+  "event_id": "uuid-v4",
+  "file_id": "uuid-v4",
+  "type": "video | audio | image",
+  "filename": "nome_sanitizado.mp4",
+  "storage_key": "raw/<file_id>/original",
+  "mime_type": "video/mp4",
+  "original_size": 1048576,
+  "occurred_at": "2026-11-02T22:00:00.000Z",
+  "status": "uploaded | processing | ready | failed | rejected",
+  "result": {
+    "url": "/streams/<file_id>/playlist.m3u8",
+    "size": 980000,
+    "format": "hls"
+  },
+  "error": null
+}
+```

@@ -1,28 +1,30 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: videobox-gateway
+  name: repositorio-multimidia-gateway
   namespace: default
 spec:
   selector:
     matchLabels:
-      app: videobox-gateway
+      app: repositorio-multimidia-gateway
   template:
     metadata:
       labels:
-        app: videobox-gateway
+        app: repositorio-multimidia-gateway
     spec:
       nodeSelector:
         role: gateway
       containers:
         - name: gateway
-          image: registry.example.com/videobox/gateway:latest
+          image: registry.example.com/repositorio-multimidia/gateway:latest
           imagePullPolicy: Always
           env:
             - name: FRONTEND_UPSTREAM
               value: http://frontend.internal:3000
             - name: BACKEND_UPSTREAM
               value: http://backend.internal:8000
+            - name: REPOSITORY_UPSTREAM
+              value: http://repository.default.svc.cluster.local:8001
             - name: RABBIT_UPSTREAM
               value: http://rabbit.internal:15672
             - name: CLIENT_MAX_BODY_SIZE

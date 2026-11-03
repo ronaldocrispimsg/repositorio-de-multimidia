@@ -1,11 +1,59 @@
 services:
+  master:
+    image: chrislusf/seaweedfs:3.65
+    container_name: repositorio-multimidia-seaweed-master
+    restart: unless-stopped
+    command: "master -ip=master -ip.bind=0.0.0.0 -port=9333"
+    volumes:
+      - seaweed_master_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  volume:
+    image: chrislusf/seaweedfs:3.65
+    container_name: repositorio-multimidia-seaweed-volume
+    restart: unless-stopped
+    command: "volume -ip=volume -mserver=master:9333 -ip.bind=0.0.0.0 -port=8080 -dir=/data"
+    volumes:
+      - seaweed_volume_data:/data
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  filer:
+    image: chrislusf/seaweedfs:3.65
+    container_name: repositorio-multimidia-seaweed-filer
+    restart: unless-stopped
+    command: "filer -ip=filer -master=master:9333 -ip.bind=0.0.0.0 -port=8888"
+    volumes:
+      - seaweed_filer_data:/data
+    depends_on:
+      master:
+        condition: service_healthy
+      volume:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8888/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   rabbitmq:
     build: ./rabbitMQ
-    container_name: videobox-rabbitmq
+    container_name: repositorio-multimidia-rabbitmq
+    restart: unless-stopped
     env_file: ./rabbitMQ/.env
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -13,61 +61,165 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
-    container_name: videobox-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: repositorio-multimidia-backend
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./backend/.env
-    ports:
-      - "8000:8000"
+    environment:
+      FILER_URL: http://filer:8888
+      VIDEO_STATE_FILE: /data/videos_state.json
     volumes:
-      - ./backend/videos_raw:/videos_raw
+      - backend_state:/data
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      filer:
         condition: service_healthy
 
   frontend:
     build: ./frontend
-    container_name: videobox-frontend
+    container_name: repositorio-multimidia-frontend
+    restart: unless-stopped
     env_file: ./frontend/.env
-    ports:
-      - "3000:3000"
     depends_on:
       - backend
 
-  process:
-    build: ./process
-    container_name: videobox-process
+  process-router:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: repositorio-multimidia-process-router
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
-    volumes:
-      - ./process/export:/srv/videobox/export
+    environment:
+      WORKER_TYPE: router
+      FILER_URL: http://filer:8888
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     depends_on:
       rabbitmq:
         condition: service_healthy
+      filer:
+        condition: service_healthy
+
+  process-video:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: repositorio-multimidia-process-video
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: ./process/.env
+    environment:
+      WORKER_TYPE: video
+      FILER_URL: http://filer:8888
+      TMP_HLS: /tmp/hls
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2G
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      filer:
+        condition: service_healthy
+
+  process-image:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: repositorio-multimidia-process-image
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: ./process/.env
+    environment:
+      WORKER_TYPE: image
+      FILER_URL: http://filer:8888
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      filer:
+        condition: service_healthy
+
+  process-audio:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: repositorio-multimidia-process-audio
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: ./process/.env
+    environment:
+      WORKER_TYPE: audio
+      FILER_URL: http://filer:8888
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      filer:
+        condition: service_healthy
 
   repository:
-    build: ./repository
-    container_name: videobox-repository
+    build:
+      context: .
+      dockerfile: repository/Dockerfile
+    container_name: repositorio-multimidia-repository
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./repository/.env
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./repository/processed_videos:/processed_videos
+    environment:
+      FILER_URL: http://filer:8888
     networks:
       default:
         aliases:
           - repo_stream
     depends_on:
-      - rabbitmq
+      filer:
+        condition: service_healthy
 
   gateway:
     build: ./nginx
-    container_name: videobox-gateway
+    container_name: repositorio-multimidia-gateway
+    restart: unless-stopped
     env_file: ./nginx/.env
+    environment:
+      REPOSITORY_UPSTREAM: http://repository:8001
+      CLIENT_MAX_BODY_SIZE: 2G
     ports:
       - "80:80"
     depends_on:
       - frontend
       - backend
+      - repository
       - rabbitmq
+
+volumes:
+  seaweed_master_data:
+  seaweed_volume_data:
+  seaweed_filer_data:
+  backend_state:

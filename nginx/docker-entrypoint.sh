@@ -20,7 +20,7 @@ fi
 
 mkdir -p "$(dirname "$TARGET")"
 
-envsubst '${FRONTEND_UPSTREAM} ${BACKEND_UPSTREAM} ${RABBIT_UPSTREAM} ${CLIENT_MAX_BODY_SIZE}' \
+envsubst '${FRONTEND_UPSTREAM} ${BACKEND_UPSTREAM} ${REPOSITORY_UPSTREAM} ${RABBIT_UPSTREAM} ${CLIENT_MAX_BODY_SIZE}' \
     < "$TEMPLATE" > "$TARGET"
 
 exec nginx -g 'daemon off;'

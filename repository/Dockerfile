@@ -1,11 +1,14 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/repository
 
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY repository/package*.json ./
+RUN npm ci --omit=dev
 
-COPY . .
+COPY shared /app/shared
+COPY repository/ ./
+
+RUN chown -R 1000:1000 /app
 
 EXPOSE 8001
 

@@ -1,0 +1,17 @@
+.git
+.agents
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+**/*.mp4
+**/*.mov
+**/*.avi
+**/*.mkv
+**/*.webm
+**/*.ts
+**/*.m3u8
+videos_raw
+export
+processed_videos
+

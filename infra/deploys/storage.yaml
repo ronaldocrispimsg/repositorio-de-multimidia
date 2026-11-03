@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: videobox-export-pv
+  name: repositorio-multimidia-export-pv
 spec:
   capacity:
     storage: 500Gi
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: videobox-export
+  storageClassName: repositorio-multimidia-export
   nfs:
     server: <EFS_OR_NFS_DNS>
     path: /
@@ -16,11 +16,11 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: videobox-export-pvc
+  name: repositorio-multimidia-export-pvc
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: videobox-export
+  storageClassName: repositorio-multimidia-export
   resources:
     requests:
       storage: 500Gi

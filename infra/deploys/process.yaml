@@ -4,9 +4,10 @@ metadata:
   name: rabbitmq-secret
 type: Opaque
 stringData:
-  # String de conexão AMQP do RabbitMQ no cluster ou IP externo
-  # Exemplo interno K3s: amqp://videobox:123456@rabbitmq.default.svc.cluster.local:5672/
-  host: "amqp://videobox:123456@rabbitmq.default.svc.cluster.local:5672/"
+  # PLACEHOLDER: não versionar a senha real. Antes do deploy, crie/atualize o Secret
+  # fora do Git (kubectl create secret generic rabbitmq-secret --from-literal=host=<amqp-url>)
+  # ou use SealedSecrets/SOPS. Formato: amqp://multimidia:<SENHA>@rabbitmq.default.svc.cluster.local:5672/
+  host: "amqp://multimidia:CHANGE_ME@rabbitmq.default.svc.cluster.local:5672/"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -18,39 +19,119 @@ spec:
       name: rabbitmq-secret
       key: host
 ---
+# ==============================================================================
+# 1. WORKER ROUTER (file.uploaded -> {video,audio,image}.uploaded | file.rejected)
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-process
+  name: repositorio-multimidia-process-router
 spec:
-  # O KEDA gerencia a contagem de réplicas automaticamente
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
-      app: videobox-process
+      app: repositorio-multimidia-process-router
   template:
     metadata:
       labels:
-        app: videobox-process
+        app: repositorio-multimidia-process-router
     spec:
       nodeSelector:
         role: processor
       containers:
-        - name: process
-          image: videobox-process:latest
+        - name: process-router
+          image: repositorio-multimidia-process:latest
           imagePullPolicy: IfNotPresent
           env:
+            - name: WORKER_TYPE
+              value: "router"
             - name: RABBIT_URL
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-secret
                   key: host
-            - name: EXPORT_PATH
-              value: /srv/videobox/export
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
+            - name: TMP_DOWNLOADS
+              value: "/tmp/videos_download"
             - name: CLEAN_TMP
               value: "true"
-            - name: REPO_STREAM_URL
-              value: http://repository.default.svc.cluster.local:8001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp-work
+              mountPath: /tmp
+      volumes:
+        - name: tmp-work
+          emptyDir: {}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: repositorio-multimidia-process-router-scaledobject
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: repositorio-multimidia-process-router
+  minReplicaCount: 1          # Router mantém 1 réplica ativa para classificar uploads imediatamente (sem cold start)
+  maxReplicaCount: 5
+  cooldownPeriod: 60
+  pollingInterval: 10
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: file.uploaded
+        mode: QueueLength
+        value: "5"
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+---
+# ==============================================================================
+# 2. WORKER DE VÍDEO (video.uploaded -> HLS -> video.ready | video.failed)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repositorio-multimidia-process-video
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: repositorio-multimidia-process-video
+  template:
+    metadata:
+      labels:
+        app: repositorio-multimidia-process-video
+    spec:
+      nodeSelector:
+        role: processor
+      containers:
+        - name: process-video
+          image: repositorio-multimidia-process:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WORKER_TYPE
+              value: "video"
+            - name: RABBIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: host
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
+            - name: TMP_HLS
+              value: "/tmp/hls"
+            - name: TMP_DOWNLOADS
+              value: "/tmp/videos_download"
+            - name: CLEAN_TMP
+              value: "true"
           resources:
             requests:
               cpu: 500m
@@ -59,32 +140,179 @@ spec:
               cpu: 2000m
               memory: 2Gi
           volumeMounts:
-            - mountPath: /srv/videobox/export
-              name: export
+            - name: tmp-work
+              mountPath: /tmp
       volumes:
-        - name: export
-          persistentVolumeClaim:
-            claimName: videobox-export-pvc
+        - name: tmp-work
+          emptyDir: {}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: videobox-process-scaledobject
+  name: repositorio-multimidia-process-video-scaledobject
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: videobox-process
-  minReplicaCount: 0          # Escala a 0 (desliga pods) quando não há vídeos para processar
-  maxReplicaCount: 10         # Limite máximo de réplicas simultâneas de FFMPEG
-  cooldownPeriod: 60          # Tempo (segundos) aguardando antes de reduzir pods após a fila esvaziar
-  pollingInterval: 15         # Frequência (segundos) em que o KEDA consulta a fila no RabbitMQ
+    name: repositorio-multimidia-process-video
+  minReplicaCount: 0          # Escala a 0 quando não há vídeos para transcodificar
+  maxReplicaCount: 10         # Limite máximo de réplicas simultâneas de FFmpeg (HLS)
+  cooldownPeriod: 60
+  pollingInterval: 15
   triggers:
     - type: rabbitmq
       metadata:
         protocol: amqp
-        queueName: video.uploaded # Fila escutada pelo worker no FastStream
+        queueName: video.uploaded # Fila escutada pelo worker Node.js (amqplib)
         mode: QueueLength
-        value: "1"                # 1 vídeo por pod (como FFMPEG usa muita CPU, 1 por pod garante velocidade máxima)
+        value: "1"                # 1 vídeo por pod (FFmpeg HLS usa bastante CPU)
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+---
+# ==============================================================================
+# 3. WORKER DE ÁUDIO (audio.uploaded -> AAC/MP3 -> audio.ready | audio.failed)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repositorio-multimidia-process-audio
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: repositorio-multimidia-process-audio
+  template:
+    metadata:
+      labels:
+        app: repositorio-multimidia-process-audio
+    spec:
+      nodeSelector:
+        role: processor
+      containers:
+        - name: process-audio
+          image: repositorio-multimidia-process:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WORKER_TYPE
+              value: "audio"
+            - name: RABBIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: host
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
+            - name: TMP_DOWNLOADS
+              value: "/tmp/videos_download"
+            - name: CLEAN_TMP
+              value: "true"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp-work
+              mountPath: /tmp
+      volumes:
+        - name: tmp-work
+          emptyDir: {}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: repositorio-multimidia-process-audio-scaledobject
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: repositorio-multimidia-process-audio
+  minReplicaCount: 0
+  maxReplicaCount: 8
+  cooldownPeriod: 60
+  pollingInterval: 15
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: audio.uploaded # Fila escutada pelo worker Node.js de áudio
+        mode: QueueLength
+        value: "2"
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+---
+# ==============================================================================
+# 4. WORKER DE IMAGEM (image.uploaded -> WebP <= 300KB -> image.ready | image.failed)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repositorio-multimidia-process-image
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: repositorio-multimidia-process-image
+  template:
+    metadata:
+      labels:
+        app: repositorio-multimidia-process-image
+    spec:
+      nodeSelector:
+        role: processor
+      containers:
+        - name: process-image
+          image: repositorio-multimidia-process:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WORKER_TYPE
+              value: "image"
+            - name: RABBIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: host
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
+            - name: TMP_DOWNLOADS
+              value: "/tmp/videos_download"
+            - name: CLEAN_TMP
+              value: "true"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp-work
+              mountPath: /tmp
+      volumes:
+        - name: tmp-work
+          emptyDir: {}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: repositorio-multimidia-process-image-scaledobject
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: repositorio-multimidia-process-image
+  minReplicaCount: 0
+  maxReplicaCount: 8
+  cooldownPeriod: 60
+  pollingInterval: 15
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: image.uploaded # Fila escutada pelo worker Node.js de imagem (sharp)
+        mode: QueueLength
+        value: "3"
       authenticationRef:
         name: rabbitmq-trigger-auth

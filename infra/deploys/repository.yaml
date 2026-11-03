@@ -1,35 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: videobox-repository
+  name: repositorio-multimidia-repository
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: videobox-repository
+      app: repositorio-multimidia-repository
   template:
     metadata:
       labels:
-        app: videobox-repository
+        app: repositorio-multimidia-repository
     spec:
       containers:
         - name: repository
-          image: videobox-repository:latest
+          image: repositorio-multimidia-repository:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: STREAM_PATH
-              value: /processed_videos
-            - name: STREAM_BASE_URL
-              value: http://repository.default.svc.cluster.local:8001/streams
+            - name: PORT
+              value: "8001"
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
           ports:
             - containerPort: 8001
               name: http
-          volumeMounts:
-            # Monta a pasta compartilhada 'processed_videos' no container do repository
-            - name: shared-storage
-              mountPath: /processed_videos
-              subPath: processed_videos
           resources:
             requests:
               cpu: 100m
@@ -37,10 +32,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-      volumes:
-        - name: shared-storage
-          persistentVolumeClaim:
-            claimName: videobox-export-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -49,7 +40,7 @@ metadata:
   namespace: default
 spec:
   selector:
-    app: videobox-repository
+    app: repositorio-multimidia-repository
   ports:
     - protocol: TCP
       port: 8001
