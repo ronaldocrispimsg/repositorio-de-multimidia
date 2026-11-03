@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const storage = require('./storage');
 const { startRouterConsumer } = require('./router');
+const { startImageConsumer } = require('./image');
 const {
   EVENTS,
   setupTopology,
@@ -239,6 +240,8 @@ async function startWorker() {
         await startRouterConsumer(channel);
       } else if (WORKER_TYPE === 'video') {
         await startVideoConsumer(channel);
+      } else if (WORKER_TYPE === 'image') {
+        await startImageConsumer(channel);
       } else {
         throw new Error(`WORKER_TYPE desconhecido ou ainda não habilitado nesta fase: ${WORKER_TYPE}`);
       }

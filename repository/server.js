@@ -74,6 +74,68 @@ app.get('/streams/:videoId/*', async (req, res) => {
   }
 });
 
+// Servir mídias processadas de imagem e áudio (/media/images/* e /media/audio/*) direto do SeaweedFS Filer
+app.get('/media/*', async (req, res) => {
+  try {
+    const relativePath = req.params[0] || '';
+    let storageKey;
+    try {
+      storageKey = storage.resolveSafeKey('processed', relativePath);
+      if (!storageKey.startsWith('processed/images/') && !storageKey.startsWith('processed/audio/')) {
+        return res.status(400).json({ error: 'Caminho de mídia fora dos prefixos permitidos (images/, audio/).' });
+      }
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const requestHeaders = {};
+    if (req.headers.range) {
+      requestHeaders.Range = req.headers.range;
+    }
+
+    const { stream, status, headers } = await storage.getStream(storageKey, {
+      headers: requestHeaders,
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 206 || s === 404 || s === 416,
+    });
+
+    if (status === 404) {
+      return res.status(404).json({ detail: 'Mídia não encontrada' });
+    }
+
+    if (status === 416) {
+      if (headers['content-range']) {
+        res.setHeader('Content-Range', headers['content-range']);
+      }
+      return res.status(416).end();
+    }
+
+    res.status(status);
+    res.setHeader('Content-Type', guessStreamContentType(relativePath) || headers['content-type']);
+    res.setHeader('Accept-Ranges', headers['accept-ranges'] || 'bytes');
+    if (headers['content-length']) {
+      res.setHeader('Content-Length', headers['content-length']);
+    }
+    if (headers['content-range']) {
+      res.setHeader('Content-Range', headers['content-range']);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+    stream.on('error', (err) => {
+      console.error('[repository] Erro ao transmitir mídia do filer:', err.message);
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Falha ao ler mídia no storage.' });
+      } else {
+        res.destroy();
+      }
+    });
+
+    stream.pipe(res);
+  } catch (error) {
+    console.error('[repository] Erro em GET /media:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Multer para rota de compatibilidade de upload de segmentos HLS
 const upload = multer({ storage: multer.memoryStorage() });
 

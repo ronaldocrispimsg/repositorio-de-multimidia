@@ -1,17 +1,18 @@
 # Arquitetura do VideoBox
 
-Atualizado em 2026-11-02 (Fase 2: Backend `/files` e Router de Mídia). Descreve o estado real comprovado no código.
+Atualizado em 2026-11-02 (Fase 3: Processamento de Imagens e `/media/`). Descreve o estado real comprovado no código.
 
 ## Serviços (Docker Compose)
 
 | Serviço | Imagem / Pasta | Função |
 | --- | --- | --- |
-| `gateway` | `nginx/` | Único ponto de entrada público (porta `80`). Roteia `/` ao frontend, `/api/` ao backend (com `proxy_request_buffering off`), `/streams/` ao repository e `/message/` ao painel do RabbitMQ. |
+| `gateway` | `nginx/` | Único ponto de entrada público (porta `80`). Roteia `/` ao frontend, `/api/` ao backend (com `proxy_request_buffering off`), `/streams/` e `/media/` ao repository e `/message/` ao painel do RabbitMQ. |
 | `frontend` | `frontend/` | Interface estática HTML5/CSS3/JS puro, player HLS (`hls.js`). |
 | `backend` | `backend/` | API REST Express (`POST /files`, `GET /files`, `GET /files/:id`, `GET /files/:id/file` e aliases `/upload`, `/videos`). Faz streaming direto do upload para o SeaweedFS Filer (`raw/{file_id}/original`), persiste estado em `/data/videos_state.json` via módulo `store`, publica `file.uploaded` na exchange `media.events` e consome a fila `media.backend`. |
 | `process-router` | `process/` (`WORKER_TYPE=router`) | Worker roteador. Consome `file.uploaded`, baixa o arquivo bruto do Filer para `/tmp`, inspeciona magic bytes (`file-type`), metadados de imagem (`sharp`) e fluxos de mídia (`ffprobe`), valida limites por tipo (`MAX_IMAGE_SIZE_BYTES`, `MAX_AUDIO_SIZE_BYTES`, `MAX_VIDEO_SIZE_BYTES`) e publica `video.uploaded`, `audio.uploaded` ou `image.uploaded` (ou apaga o raw do Filer e publica `file.rejected`). |
 | `process` | `process/` (`WORKER_TYPE=video`) | Worker Node.js + FFmpeg. Consome `video.uploaded`, baixa o raw direto do Filer para `/tmp`, gera segmentos HLS em `/tmp/hls/{file_id}`, envia os artefatos para `processed/videos/{file_id}/...` no Filer e publica `video.ready` ou faz retry via DLX até publicar `video.failed`. |
-| `repository` | `repository/` | Serviço Express que serve `/streams/:videoId/*` fazendo proxy em streaming a partir do SeaweedFS Filer (`processed/videos/{file_id}/...`) com validação `path.posix.resolve` + prefixo. |
+| `process-image` | `process/` (`WORKER_TYPE=image`) | Worker Node.js + `sharp`. Consome `image.uploaded`, publica `image.processing`, aplica orientação EXIF (`.rotate()`) removendo metadados EXIF, preserva canal alpha, converte para WebP (`<= 300 KB`, máx. `2048x2048` com loop de qualidades `[85, 75, 65, 55, 45]` e redução progressiva de 15% até 320px), grava em `processed/images/{file_id}.webp`, publica `image.ready` e remove o raw do Filer. |
+| `repository` | `repository/` | Serviço Express que serve `/streams/:videoId/*` (`processed/videos/{file_id}/...`) e `/media/*` (`processed/images/...` e `processed/audio/...`, com `Cache-Control: public, max-age=31536000, immutable` e suporte a `Range`) fazendo proxy em streaming a partir do SeaweedFS Filer com validação `path.posix.resolve` + prefixo. |
 | `rabbitmq` | `rabbitMQ/` | Broker AMQP (`rabbitmq:3.13-management`) na rede interna. |
 | `master` | `chrislusf/seaweedfs:3.65` | Coordenador de topologia e volumes do SeaweedFS (rede interna, volume `seaweed_master_data`). |
 | `volume` | `chrislusf/seaweedfs:3.65` | Servidor de armazenamento de blocos do SeaweedFS (rede interna, volume `seaweed_volume_data`). |

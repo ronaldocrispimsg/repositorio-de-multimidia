@@ -42,6 +42,12 @@ server {
         proxy_http_version 1.1;
     }
 
+    # Mídias processadas de imagem e áudio (/media/) servidas pelo repository com cache imutável
+    location /media/ {
+        proxy_pass ${REPOSITORY_UPSTREAM}/media/;
+        proxy_http_version 1.1;
+    }
+
     # Painel de gerenciamento do RabbitMQ (HTTP + websockets)
     location /message/ {
         proxy_pass ${RABBIT_UPSTREAM}/;
