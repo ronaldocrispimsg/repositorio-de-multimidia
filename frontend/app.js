@@ -400,8 +400,7 @@ uploadForm.addEventListener("submit", async (e) => {
 // ============================================================
 async function fetchFiles() {
   try {
-    const query = activeFilterType ? `?type=${encodeURIComponent(activeFilterType)}` : "";
-    const response = await fetch(`${API_BASE}/files${query}`);
+    const response = await fetch(`${API_BASE}/files`);
     if (!response.ok) {
       throw new Error(`Erro ${response.status} ao buscar arquivos.`);
     }
@@ -426,6 +425,27 @@ function updateStatsCounters(files) {
   statTotal.textContent = String(total);
   statReady.textContent = String(ready);
   statPending.textContent = String(pending);
+
+  const countByType = {
+    "": total,
+    video: files.filter((f) => String(f.type || "").toLowerCase() === "video").length,
+    audio: files.filter((f) => String(f.type || "").toLowerCase() === "audio").length,
+    image: files.filter((f) => String(f.type || "").toLowerCase() === "image").length,
+  };
+
+  const labelByType = {
+    "": "Todos",
+    video: "Vídeos",
+    audio: "Áudios",
+    image: "Imagens",
+  };
+
+  filterTabs.forEach((tab) => {
+    const t = tab.getAttribute("data-type") || "";
+    const baseLabel = labelByType[t] || tab.textContent;
+    const c = countByType[t] !== undefined ? countByType[t] : 0;
+    tab.textContent = `${baseLabel} (${c})`;
+  });
 }
 
 function schedulePollingIfNeeded(files) {
@@ -566,6 +586,9 @@ function renderGallery() {
 
   const searchTerm = (searchInput ? searchInput.value : "").trim().toLowerCase();
   const filtered = cachedFiles.filter((item) => {
+    if (activeFilterType && String(item.type || "").toLowerCase() !== activeFilterType) {
+      return false;
+    }
     if (!searchTerm) return true;
     const name = String(item.filename || "").toLowerCase();
     const id = String(item.file_id || item.video_id || "").toLowerCase();
@@ -768,8 +791,8 @@ filterTabs.forEach((tab) => {
     });
     tab.classList.add("active");
     tab.setAttribute("aria-selected", "true");
-    activeFilterType = tab.getAttribute("data-type") || "";
-    fetchFiles();
+    activeFilterType = (tab.getAttribute("data-type") || "").toLowerCase();
+    renderGallery();
   });
 });
 

@@ -100,6 +100,27 @@ test('store: progressão normal, bloqueio de transições regressivas e idempot�
     assert.equal(fs.existsSync(`${stateFile}.tmp`), false);
     const reloaded = createStore({ stateFile });
     assert.equal(reloaded.get(fileId).status, 'ready');
+
+    // 8. Filtro por tipo e status em store.list({ type, status })
+    const imgId = crypto.randomUUID();
+    const audId = crypto.randomUUID();
+    await reloaded.upsert(imgId, {
+      type: 'image',
+      filename: 'foto.webp',
+      status: 'ready',
+    });
+    await reloaded.upsert(audId, {
+      type: 'audio',
+      filename: 'musica.mp3',
+      status: 'processing',
+    });
+
+    assert.equal(reloaded.list().length, 3);
+    assert.equal(reloaded.list({ type: 'video' }).length, 1);
+    assert.equal(reloaded.list({ type: 'image' }).length, 1);
+    assert.equal(reloaded.list({ type: 'audio' }).length, 1);
+    assert.equal(reloaded.list({ status: 'ready' }).length, 2);
+    assert.equal(reloaded.list({ type: 'audio', status: 'processing' }).length, 1);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

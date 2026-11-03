@@ -35,11 +35,20 @@ const store = createStore();
 
 let amqpChannel = null;
 
-function guessInitialType(mimeType = '') {
+const path = require('path');
+
+function guessInitialType(mimeType = '', filename = '') {
   const m = String(mimeType || '').toLowerCase();
   if (m.startsWith('image/')) return 'image';
   if (m.startsWith('audio/')) return 'audio';
-  return 'video';
+  if (m.startsWith('video/')) return 'video';
+
+  const ext = path.posix.extname(String(filename || '')).toLowerCase();
+  if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) return 'image';
+  if (['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.oga', '.opus'].includes(ext)) return 'audio';
+  if (['.mp4', '.webm', '.mov', '.mkv', '.avi'].includes(ext)) return 'video';
+
+  return null;
 }
 
 async function setupRabbitMQ() {
@@ -166,7 +175,8 @@ app.get('/health', (req, res) => {
 });
 
 function handleListFiles(req, res) {
-  res.json(store.list());
+  const { type, status } = req.query || {};
+  res.json(store.list({ type, status }));
 }
 
 function handleGetFile(req, res) {
@@ -232,7 +242,7 @@ async function handleUploadFile(req, res) {
     } = req.file;
 
     const occurredAt = new Date().toISOString();
-    const initialType = guessInitialType(mimeType);
+    const initialType = guessInitialType(mimeType, sanitizedFilename);
 
     const { item } = await store.upsert(fileId, {
       type: initialType,

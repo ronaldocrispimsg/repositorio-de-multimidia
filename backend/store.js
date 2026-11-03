@@ -106,7 +106,9 @@ function createStore(options = {}) {
     }
 
     const now = new Date().toISOString();
-    const resolvedType = patch.type !== undefined ? patch.type : (current ? current.type : 'video');
+    const resolvedType = (patch.type !== undefined && patch.type !== null)
+      ? patch.type
+      : (current ? current.type : null);
     const resolvedResult = patch.result !== undefined ? patch.result : (current ? current.result : null);
     const resolvedError = patch.error !== undefined ? patch.error : (current ? current.error : null);
     const streamUrl = (resolvedResult && resolvedResult.url)
@@ -145,8 +147,25 @@ function createStore(options = {}) {
     return state[fileId] || null;
   }
 
-  function list() {
-    return Object.values(state);
+  function list(filters = {}) {
+    let items = Object.values(state);
+
+    if (filters && filters.type) {
+      const targetType = String(filters.type).trim().toLowerCase();
+      items = items.filter((item) => String(item.type || '').toLowerCase() === targetType);
+    }
+
+    if (filters && filters.status) {
+      const targetStatus = String(filters.status).trim().toLowerCase();
+      items = items.filter((item) => String(item.status || '').toLowerCase() === targetStatus);
+    }
+
+    // Ordena do mais recente para o mais antigo
+    return items.sort((a, b) => {
+      const tA = Date.parse(a.created_at || a.occurred_at || 0) || 0;
+      const tB = Date.parse(b.created_at || b.occurred_at || 0) || 0;
+      return tB - tA;
+    });
   }
 
   load();
