@@ -95,7 +95,7 @@ function hashString(str) {
 // ============================================================
 
 /**
- * Desenha uma miniatura de espectrograma/ondas acústicas determinística para cada arquivo de áudio
+ * Desenha uma miniatura de espectrograma/ondas acústicas determinística na paleta clara original (#f4f4f9 / #0066cc)
  */
 function drawAudioWaveformThumbnail(canvas, item, isSquare = false) {
   const ctx = canvas.getContext("2d");
@@ -103,18 +103,15 @@ function drawAudioWaveformThumbnail(canvas, item, isSquare = false) {
   const h = canvas.height;
   const seedBase = hashString((item && (item.file_id || item.filename)) || "audio");
 
-  const hue1 = seedBase % 360;
-  const hue2 = (hue1 + 48) % 360;
-
-  // Fundo escuro de estúdio com gradiente sutil baseado no hash da faixa
+  // Fundo claro harmonizado com #f4f4f9 e #cce5ff
   const bgGrad = ctx.createLinearGradient(0, 0, w, h);
-  bgGrad.addColorStop(0, `hsl(${hue1}, 38%, 12%)`);
-  bgGrad.addColorStop(1, `hsl(${hue2}, 42%, 7%)`);
+  bgGrad.addColorStop(0, "#eef5ff");
+  bgGrad.addColorStop(1, "#e2ecf9");
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, w, h);
 
-  // Grade técnica de fundo
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+  // Grade técnica sutil
+  ctx.strokeStyle = "rgba(0, 102, 204, 0.08)";
   ctx.lineWidth = 1;
   const step = isSquare ? 20 : 28;
   for (let x = step; x < w; x += step) {
@@ -128,7 +125,7 @@ function drawAudioWaveformThumbnail(canvas, item, isSquare = false) {
   ctx.lineTo(w, h / 2);
   ctx.stroke();
 
-  // Barras de forma de onda simétricas
+  // Barras de forma de onda simétricas no azul #0066cc / #0052a3
   const barCount = isSquare ? 18 : 38;
   const padX = isSquare ? 12 : 20;
   const usableW = w - padX * 2;
@@ -136,18 +133,17 @@ function drawAudioWaveformThumbnail(canvas, item, isSquare = false) {
   const barW = Math.max(2, slotW * 0.58);
 
   const barGrad = ctx.createLinearGradient(0, 0, 0, h);
-  barGrad.addColorStop(0, `hsl(${hue1}, 82%, 66%)`);
-  barGrad.addColorStop(0.5, `hsl(${hue2}, 88%, 56%)`);
-  barGrad.addColorStop(1, `hsl(${hue1}, 82%, 66%)`);
+  barGrad.addColorStop(0, "#3385ff");
+  barGrad.addColorStop(0.5, "#0066cc");
+  barGrad.addColorStop(1, "#0052a3");
   ctx.fillStyle = barGrad;
 
   let s = seedBase || 1;
   for (let i = 0; i < barCount; i += 1) {
     s = (s * 1664525 + 1013904223) >>> 0;
     const norm = (s & 0xffff) / 0xffff;
-    // Envelope senoidal para parecer forma de onda real
     const envelope = Math.sin(((i + 0.5) / barCount) * Math.PI);
-    const amp = Math.max(0.12, norm * 0.75 * envelope + 0.15);
+    const amp = Math.max(0.14, norm * 0.75 * envelope + 0.15);
     const barH = amp * (h * 0.72);
     const x = padX + i * slotW + (slotW - barW) / 2;
     const y = (h - barH) / 2;
@@ -163,40 +159,48 @@ function drawAudioWaveformThumbnail(canvas, item, isSquare = false) {
 }
 
 /**
- * Desenha um poster técnico para vídeos ou estados pendentes/rejeitados
+ * Desenha um poster técnico na paleta original para vídeos ou estados pendentes/rejeitados
  */
 function drawStatusOrVideoPlaceholder(canvas, item) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
-  const seed = hashString(item.file_id || item.filename);
-  const hue = (seed % 60) + 195; // tons azul/ciano petróleo
+
+  const isErr = item.status === "rejected" || item.status === "failed";
+  const isWarn = item.status === "processing";
 
   const grad = ctx.createLinearGradient(0, 0, w, h);
-  grad.addColorStop(0, `hsl(${hue}, 32%, 14%)`);
-  grad.addColorStop(1, "#090b0f");
+  if (isErr) {
+    grad.addColorStop(0, "#f8d7da");
+    grad.addColorStop(1, "#f1b0b7");
+  } else if (isWarn) {
+    grad.addColorStop(0, "#fff3cd");
+    grad.addColorStop(1, "#ffeeba");
+  } else {
+    grad.addColorStop(0, "#e9ecef");
+    grad.addColorStop(1, "#dee2e6");
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  // Película / trilho lateral se for vídeo
+  // Película lateral se for vídeo
   if (item.type === "video") {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
     for (let y = 8; y < h; y += 18) {
       ctx.fillRect(8, y, 10, 10);
       ctx.fillRect(w - 18, y, 10, 10);
     }
   }
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.fillStyle = isErr ? "#721c24" : isWarn ? "#856404" : "#555555";
   ctx.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "center";
 
-  const label =
-    item.status === "rejected" || item.status === "failed"
-      ? "ARQUIVO RECUSADO / FALHA"
-      : item.status === "processing" || item.status === "uploaded"
-        ? "PROCESSANDO NO PIPELINE..."
-        : (item.type || "VIDEO").toUpperCase();
+  const label = isErr
+    ? "ARQUIVO RECUSADO / FALHA"
+    : item.status === "processing" || item.status === "uploaded"
+      ? "PROCESSANDO NO PIPELINE..."
+      : (item.type || "VIDEO").toUpperCase();
 
   ctx.fillText(label, w / 2, h / 2 + 4);
 }
