@@ -9,7 +9,11 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
-const RABBIT_URL = process.env.RABBIT_URL || 'amqp://videobox:123456@rabbitmq:5672/';
+const RABBIT_URL = process.env.RABBIT_URL;
+if (!RABBIT_URL) {
+  console.error('[backend] Variável RABBIT_URL não definida. Copie .env.example para .env e configure.');
+  process.exit(1);
+}
 const VIDEO_STORAGE = path.resolve(process.env.VIDEO_STORAGE || '/videos_raw');
 const VIDEO_STATE_FILE = path.resolve(process.env.VIDEO_STATE_FILE || path.join(VIDEO_STORAGE, 'videos_state.json'));
 const FILE_BASE_URL = (process.env.FILE_BASE_URL || 'http://backend:8000').replace(/\/+$/, '');

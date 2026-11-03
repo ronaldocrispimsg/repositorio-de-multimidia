@@ -147,7 +147,9 @@ O sistema é composto por módulos modulares, cada um encapsulado em seu própri
 
 ### Configuração
 
-Cada módulo possui um arquivo `.env.example` pré-configurado. Para utilizá-los, basta copiar ou renomear para `.env` em cada diretório (o projeto já conta com valores padrão funcionais).
+Cada módulo possui um arquivo `.env.example`. Copie-o para `.env` no mesmo diretório (`cp backend/.env.example backend/.env`, e assim para os demais). Os arquivos `.env` não são versionados.
+
+Antes de subir, troque `CHANGE_ME` por uma senha própria. O valor deve ser o mesmo em `rabbitMQ/.env` (`RABBITMQ_DEFAULT_PASS`) e nas `RABBIT_URL` de `backend/.env` e `process/.env`. Se a senha tiver caracteres especiais, codifique-os na URL (percent-encoding). Sem `RABBIT_URL`, backend e process encerram com erro.
 
 ### Execução Local (Docker Compose)
 
@@ -164,4 +166,4 @@ docker compose up --build
    * **API Backend**: `http://localhost/api/videos` (ou direto em `http://localhost:8000/videos`)
    * **Healthcheck do Backend**: `http://localhost:8000/health`
    * **Servidor de Streams (Repository)**: `http://localhost:8001/health`
-   * **Painel RabbitMQ**: `http://localhost:15672` (ou via Gateway em `http://localhost/message/`, usuário: `videobox` / senha: `123456`)
+   * **Painel RabbitMQ**: `http://localhost:15672` (ou via Gateway em `http://localhost/message/`, usuário e senha definidos em `rabbitMQ/.env`)

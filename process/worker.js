@@ -6,7 +6,11 @@ const axios = require('axios');
 const FormData = require('form-data');
 require('dotenv').config();
 
-const RABBIT_URL = process.env.RABBIT_URL || 'amqp://videobox:123456@rabbitmq:5672/';
+const RABBIT_URL = process.env.RABBIT_URL;
+if (!RABBIT_URL) {
+  console.error('[process] Variável RABBIT_URL não definida. Copie .env.example para .env e configure.');
+  process.exit(1);
+}
 const TMP_HLS = path.resolve(process.env.TMP_HLS || '/tmp/hls');
 const TMP_DOWNLOADS = path.resolve(process.env.TMP_DOWNLOADS || '/tmp/videos_download');
 const EXPORT_PATH = path.resolve(process.env.EXPORT_PATH || '/srv/videobox/export');

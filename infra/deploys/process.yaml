@@ -4,9 +4,10 @@ metadata:
   name: rabbitmq-secret
 type: Opaque
 stringData:
-  # String de conexão AMQP do RabbitMQ no cluster ou IP externo
-  # Exemplo interno K3s: amqp://videobox:123456@rabbitmq.default.svc.cluster.local:5672/
-  host: "amqp://videobox:123456@rabbitmq.default.svc.cluster.local:5672/"
+  # PLACEHOLDER: não versionar a senha real. Antes do deploy, crie/atualize o Secret
+  # fora do Git (kubectl create secret generic rabbitmq-secret --from-literal=host=<amqp-url>)
+  # ou use SealedSecrets/SOPS. Formato: amqp://videobox:<SENHA>@rabbitmq.default.svc.cluster.local:5672/
+  host: "amqp://videobox:CHANGE_ME@rabbitmq.default.svc.cluster.local:5672/"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
