@@ -195,6 +195,11 @@ async function startVideoConsumer(channel) {
         error: null,
       });
 
+      // Remove o raw do Filer após publicar video.ready com sucesso
+      await storage.delete(storageKey).catch((err) => {
+        console.warn(`[process] Aviso: falha ao remover raw ${storageKey}:`, err.message);
+      });
+
       channel.ack(msg);
     } catch (error) {
       await handleWorkerRetryOrFail({

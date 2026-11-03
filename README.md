@@ -1,169 +1,155 @@
 # VideoBox
 
-**Sistema Distribuído para Upload, Processamento e Consumo de Vídeos**
+**Sistema Distribuído Orientado a Eventos para Upload, Processamento e Streaming de Vídeo (HLS), Áudio (AAC/MP3) e Imagem (WebP)**
 
 ---
 
 ## Contexto
 
-O **VideoBox** é um sistema distribuído desenvolvido como trabalho final da disciplina **Sistemas Distribuídos**, com o objetivo de aplicar conceitos como **arquitetura orientada a eventos**, **processamento assíncrono**, **orquestração de serviços** e **streaming de mídia**.
-
-O sistema permite que usuários façam upload de vídeos e os assistam posteriormente utilizando o protocolo **HLS (HTTP Live Streaming)**, após processamento distribuído.
+O **VideoBox** é um sistema distribuído em **Node.js (Express / CommonJS)** que recebe uploads de **vídeos, áudios e imagens**, armazena objetos em streaming no **SeaweedFS**, roteia e valida binários por *magic bytes* e `ffprobe`, processa cada tipo de mídia em workers independentes via **RabbitMQ** e entrega os artefatos com cache imutável e suporte a HTTP `Range` / HLS através de um **Gateway NGINX**.
 
 ---
 
-## Objetivos
+## Arquitetura e Fluxo Orientado a Eventos
 
-1. Implementar um sistema distribuído realista e desacoplado
-2. Utilizar as tecnologias **Docker, RabbitMQ, NGINX, Node.js (Express) e FFMPEG**
-3. Permitir o upload de vídeos pelos usuários via interface web
-4. Permitir o consumo dos vídeos via **HLS** com player integrado
-5. Aplicar comunicação assíncrona baseada em eventos (AMQP)
-6. Demonstrar escalabilidade horizontal orientada a eventos no processamento de vídeos
-7. Garantir controle local e permissões diretas sobre os arquivos brutos e processados
+```mermaid
+flowchart LR
+    U[Cliente / Navegador] -->|Porta 80| GW[NGINX Gateway]
+    GW -->|/api/*| BE[Backend API]
+    GW -->|/streams/* e /media/*| REPO[Repository Service]
+    GW -->|/| FE[Frontend UI]
 
----
+    BE -->|PUT raw/{file_id}/original| FILER[(SeaweedFS Filer :8888)]
+    BE -->|file.uploaded| MQ((RabbitMQ media.events))
 
-## Arquitetura & Stack
+    MQ -->|file.uploaded| WR[process-router]
+    WR -->|Magic bytes + sharp + ffprobe| FILER
+    WR -->|video.uploaded| WV[process-video]
+    WR -->|audio.uploaded| WA[process-audio]
+    WR -->|image.uploaded| WI[process-image]
+    WR -->|file.rejected| MQ
 
-O sistema é composto por módulos modulares, cada um encapsulado em seu próprio container com Dockerfile e configurações em arquivos `.env`:
+    WV -->|HLS .m3u8 + .ts| FILER
+    WA -->|AAC 128k .m4a / copy .mp3| FILER
+    WI -->|WebP <= 300 KB| FILER
 
-### NGINX (Gateway)
+    WV & WA & WI -->|*.processing / *.ready / *.failed| MQ
+    MQ -->|media.backend| BE
+    REPO -->|Proxy Streaming + Range| FILER
+```
 
-* Atua como **entrypoint do sistema** (porta 80)
-* Responsável por:
-  * API Gateway
-  * Reverse proxy
-  * Centralização do acesso aos serviços
-  * Roteamento para frontend (`/`), backend (`/api/`) e RabbitMQ (`/message/`)
+### Componentes
 
----
-
-### Backend (Node.js + Express + AMQP)
-
-* Responsável pelas **APIs RESTful** (porta 8000)
-* Implementa as **regras de negócio** e persistência de estado (`videos_state.json`)
-* Publica eventos na fila `video.uploaded` do **RabbitMQ**
-* Escuta os eventos `video.processing` e `video.ready` para manter o status atualizado
-* Disponibiliza download do arquivo bruto original (`/videos/:videoId/file`)
-
----
-
-### Frontend (HTML, CSS e JavaScript Puro)
-
-* Interface leve, responsiva e moderna, sem frameworks adicionais
-* Permite:
-  * Upload de vídeos com feedback em tempo real
-  * Monitoramento dinâmico de status dos vídeos
-  * Reprodução direta via player integrado com suporte a HLS (`hls.js`)
-* Comunicação via API REST com o backend (via Gateway em `/api` ou direto na porta 8000)
-
----
-
-### RabbitMQ
-
-* Broker de mensagens (AMQP na porta 5672 e painel de gerenciamento na porta 15672)
-* Utiliza imagem oficial com plugin de gerenciamento
-* Responsável pela **comunicação assíncrona orientada a eventos**
-* Desacopla o recebimento, a fila de processamento e a entrega
+1. **Gateway (`nginx/`)**: única porta pública do sistema (`80:80`). Roteia `/` para o `frontend`, `/api/` para o `backend` (com `proxy_request_buffering off`), `/streams/` e `/media/` para o `repository`, e `/message/` para o painel do RabbitMQ.
+2. **Backend (`backend/`)**:
+   - Endpoints principais: `POST /files`, `GET /files` (suporta `?type=video|audio|image`), `GET /files/:id` e `GET /files/:id/file` (mantendo `/upload` e `/videos` como aliases de transição).
+   - Grava o upload diretamente no SeaweedFS Filer (`raw/{file_id}/original`) em streaming via engine customizada do Multer, sem carregar o arquivo em memória.
+   - Gerencia o estado em `/data/videos_state.json` (volume `backend_state`) através do módulo `backend/store.js`, com escrita atômica (`.tmp` + `rename`) e máquina de estados monotônica (`uploaded` → `processing` → `ready | failed | rejected`), ignorando transições regressivas.
+3. **Storage Distribuído (`master`, `volume`, `filer` — `chrislusf/seaweedfs:3.65`)**:
+   - Acessado na rede interna via HTTP (`http://filer:8888`) pelo módulo `shared/storage.js`.
+   - Prefixos determinísticos (garantindo idempotência ao reprocessar o mesmo `file_id`):
+     - `raw/{file_id}/original` (removido após `*.ready` ou `file.rejected`)
+     - `processed/videos/{file_id}/playlist.m3u8` e segmentos `.ts`
+     - `processed/images/{file_id}.webp`
+     - `processed/audio/{file_id}.{m4a|mp3}`
+4. **Workers Assíncronos (`process/`, parametrizados por `WORKER_TYPE`)**:
+   - `process-router` (`WORKER_TYPE=router`): consome `file.uploaded`, inspeciona magic bytes (`file-type`), metadados de imagem (`sharp`) e streams de mídia (`ffprobe`, diferenciando vídeo real de capa de álbum `attached_pic`), valida limites por tipo e publica `video.uploaded`, `audio.uploaded` ou `image.uploaded` — ou apaga o raw e emite `file.rejected`.
+   - `process-video` (`WORKER_TYPE=video`): consome `video.uploaded`, transcodifica para HLS (`h264`/`aac`) com FFmpeg, grava em `processed/videos/{file_id}/...`, publica `video.ready` e apaga o raw.
+   - `process-image` (`WORKER_TYPE=image`): consome `image.uploaded`, auto-orienta e remove metadados EXIF (`.rotate()`), preserva canal alpha e comprime com `sharp` para **WebP ≤ 300 KB** (caixa máxima `2048x2048`, qualidades `[85, 75, 65, 55, 45]` e redução progressiva de 15% até `320px`), publica `image.ready` e apaga o raw.
+   - `process-audio` (`WORKER_TYPE=audio`): consome `audio.uploaded`, extrai duração e tags (`title`, `artist`) via `ffprobe`, faz remux sem perdas (`-vn -c:a copy`) quando já é `mp3 <= 128k` ou `aac (m4a) <= 128k`, ou reencoda com `-vn -c:a aac -b:a 128k -movflags +faststart` (`.m4a`), publica `audio.ready` e apaga o raw.
+5. **Repository (`repository/`)**:
+   - Serve `/streams/:videoId/*` (HLS) e `/media/*` (`processed/images/...` e `processed/audio/...`) em streaming direto do Filer, com validação de caminho (`path.posix.resolve` + prefixo), `Cache-Control: public, max-age=31536000, immutable` e suporte a `Range` HTTP (`206 Partial Content`).
+6. **Infraestrutura K3s + KEDA (`infra/deploys/`)**:
+   - Manifestos Kubernetes para o gateway, repository e os 4 Deployments + `ScaledObjects` do KEDA escalando cada worker pela profundidade de sua fila (`file.uploaded`, `video.uploaded`, `audio.uploaded`, `image.uploaded`).
 
 ---
 
-### Process (Node.js Worker + FFMPEG)
+## Contrato de Eventos (RabbitMQ `media.events`)
 
-* Serviço worker responsável pelo **processamento e transcode dos vídeos**
-* Consome eventos da fila `video.uploaded` do RabbitMQ
-* Notifica o início do processamento via fila `video.processing`
-* Orquestra o **FFMPEG** nativo para converter arquivos brutos em:
-  * Playlists `playlist.m3u8`
-  * Segmentos HLS (`.ts`)
-* Envia os fragmentos gerados via HTTP multipart para o serviço `repository`
-* Publica o evento `video.ready` com a URL do stream gerado
+Exchange do tipo `topic` chamada `media.events`. Lista fechada de **14 eventos explícitos** (sem curingas):
 
----
-
-### Repository (Node.js + Express)
-
-* Serviço de armazenamento e entrega de streaming HLS na pasta `repository/processed_videos` (porta 8001)
-* Endpoints para receber os fragmentos (`POST /videos/:videoId/segments`) e finalizar o pacote (`POST /videos/:videoId/complete`)
-* Serve diretamente as playlists e fragmentos via HTTP (`GET /streams/*`) para o player
-* Habilita CORS para transmissões sem bloqueio no navegador
-
----
-
-### Permissões e Armazenamento Local
-
-* Todos os diretórios de armazenamento (`backend/videos_raw`, `process/export`, `repository/processed_videos`) utilizam montagens diretas do host (*bind mounts*).
-* Os containers rodam com `user: "1000:1000"`, garantindo que todos os arquivos criados pertençam ao usuário local no host, sem problemas de permissão ou necessidade de `sudo` para gerenciá-los ou excluí-los.
-
----
-
-## Fluxo de Funcionamento
-
-1. O usuário seleciona e envia um vídeo pelo frontend.
-2. O backend salva o arquivo bruto em `backend/videos_raw` e emite o evento `video.uploaded` no RabbitMQ.
-3. O worker **Process**:
-   * Consome o evento `video.uploaded`
-   * Emite `video.processing` para atualizar o status no sistema
-   * Baixa o arquivo do backend e executa o FFMPEG para gerar o streaming HLS
-4. Concluída a conversão, o **Process**:
-   * Envia os fragmentos e a playlist para a pasta `processed_videos` do **Repository**
-   * Emite o evento `video.ready` com a URL do stream gerado
-5. O backend recebe `video.ready` e marca o vídeo como pronto no estado persistido.
-6. O frontend atualiza a lista e o usuário assiste ao vídeo via **HLS** no player.
-
----
-
-## Eventos do Sistema
-
-| Evento | Origem | Destino | Descrição |
+| Evento | Origem | Fila / Destino | Descrição |
 | --- | --- | --- | --- |
-| `video.uploaded` | Backend | Process | Novo vídeo enviado e disponível para conversão |
-| `video.processing` | Process | Backend | Conversão iniciada pelo FFMPEG |
-| `video.ready` | Process | Backend / Frontend | Conversão finalizada e streaming HLS disponível |
+| `file.uploaded` | `backend` | `file.uploaded` (`process-router`) | Upload bruto concluído no Filer |
+| `file.rejected` | `process-router` | `media.backend` (`backend`) | Arquivo inválido, corrompido, GIF ou acima do limite |
+| `video.uploaded` | `process-router` | `video.uploaded` (`process-video`) | Vídeo validado aguardando transcodificação HLS |
+| `audio.uploaded` | `process-router` | `audio.uploaded` (`process-audio`) | Áudio validado aguardando compressão/remux |
+| `image.uploaded` | `process-router` | `image.uploaded` (`process-image`) | Imagem validada aguardando conversão WebP |
+| `video.processing` | `process-video` | `media.backend` (`backend`) | Transcodificação HLS iniciada |
+| `audio.processing` | `process-audio` | `media.backend` (`backend`) | Processamento de áudio iniciado |
+| `image.processing` | `process-image` | `media.backend` (`backend`) | Compressão WebP iniciada |
+| `video.ready` | `process-video` | `media.backend` (`backend`) | HLS pronto em `/streams/{file_id}/playlist.m3u8` |
+| `audio.ready` | `process-audio` | `media.backend` (`backend`) | Áudio pronto em `/media/audio/{file_id}.{m4a\|mp3}` |
+| `image.ready` | `process-image` | `media.backend` (`backend`) | Imagem pronta em `/media/images/{file_id}.webp` |
+| `video.failed` | `process-video` | `media.backend` (`backend`) | Falha definitiva após 3 tentativas com backoff (DLX) |
+| `audio.failed` | `process-audio` | `media.backend` (`backend`) | Falha definitiva após 3 tentativas com backoff (DLX) |
+| `image.failed` | `process-image` | `media.backend` (`backend`) | Falha definitiva após 3 tentativas com backoff (DLX) |
 
----
+### Payload Padrão (snake_case)
 
-## Estrutura do Projeto
-
-```text
-/backend      # API REST em Node.js (Express), uploads e integração RabbitMQ
-/frontend     # Interface web em HTML5, CSS3 e JavaScript puro
-/process      # Worker assíncrono em Node.js e conversão FFMPEG
-/rabbitMQ     # Broker RabbitMQ com dashboard
-/repository   # Servidor de streaming HLS em Node.js (Express) e processed_videos
-/nginx        # Gateway NGINX e proxy reverso unificado
-/infra        # Manifestos K3s (Deployment, KEDA ScaledObject, Storage)
+```json
+{
+  "event_id": "d290f1ee-6c54-4b01-90e6-d701748f0851",
+  "file_id": "3f70d922-9ce2-4e4b-8dc9-4d207fd8497a",
+  "type": "image",
+  "filename": "foto.png",
+  "storage_key": "processed/images/3f70d922-9ce2-4e4b-8dc9-4d207fd8497a.webp",
+  "mime_type": "image/webp",
+  "original_size": 4613460,
+  "occurred_at": "2026-11-03T02:35:46.755Z",
+  "status": "ready",
+  "result": {
+    "url": "/media/images/3f70d922-9ce2-4e4b-8dc9-4d207fd8497a.webp",
+    "size": 294852,
+    "format": "webp",
+    "width": 650,
+    "height": 867
+  },
+  "error": null
+}
 ```
 
 ---
 
-## Instalação e Execução
+## Limites e Formatos Aceitos
 
-### Pré-requisitos
+| Tipo | Formatos de Entrada Aceitos | Limite de Upload | Formato de Saída |
+| --- | --- | --- | --- |
+| **Imagem** | `jpeg`, `jpg`, `png`, `webp` (GIF é rejeitado) | `20 MB` (`MAX_IMAGE_SIZE_BYTES`) | `.webp` (`<= 300 KB`, máx. `2048x2048`, alpha preservado, sem EXIF) |
+| **Áudio** | `mp3`, `m4a`, `wav`, `flac`, `ogg` | `200 MB` (`MAX_AUDIO_SIZE_BYTES`) | `.mp3` (se entrada `mp3 <= 128k`) ou `.m4a` (`aac 128k +faststart`) |
+| **Vídeo** | Containers com codec de vídeo válido no `ffprobe` (`h264`, `hevc`, `av1`, `vp9`, etc.) | `2 GB` (`MAX_VIDEO_SIZE_BYTES`) | HLS (`playlist.m3u8` + segmentos `.ts`) |
 
-* Docker
-* Docker Compose
+---
 
-### Configuração
+## Configuração e Execução Local
 
-Cada módulo possui um arquivo `.env.example`. Copie-o para `.env` no mesmo diretório (`cp backend/.env.example backend/.env`, e assim para os demais). Os arquivos `.env` não são versionados.
+### 1. Variáveis de Ambiente
 
-Antes de subir, troque `CHANGE_ME` por uma senha própria. O valor deve ser o mesmo em `rabbitMQ/.env` (`RABBITMQ_DEFAULT_PASS`) e nas `RABBIT_URL` de `backend/.env` e `process/.env`. Se a senha tiver caracteres especiais, codifique-os na URL (percent-encoding). Sem `RABBIT_URL`, backend e process encerram com erro.
-
-### Execução Local (Docker Compose)
-
-1. Clone o repositório
-2. Acesse a pasta do projeto
-3. Inicie os containers:
+Copie os arquivos `.env.example` para `.env` em cada serviço:
 
 ```bash
-docker compose up --build
+cp rabbitMQ/.env.example rabbitMQ/.env
+cp backend/.env.example backend/.env
+cp process/.env.example process/.env
+cp repository/.env.example repository/.env
+cp frontend/.env.example frontend/.env
+cp nginx/.env.example nginx/.env
 ```
 
-4. Acessos locais disponíveis:
-   * **Aplicação Web (Frontend)**: `http://localhost` (ou `http://localhost:3000`)
-   * **API Backend**: `http://localhost/api/videos` (ou direto em `http://localhost:8000/videos`)
-   * **Healthcheck do Backend**: `http://localhost:8000/health`
-   * **Servidor de Streams (Repository)**: `http://localhost:8001/health`
-   * **Painel RabbitMQ**: `http://localhost:15672` (ou via Gateway em `http://localhost/message/`, usuário e senha definidos em `rabbitMQ/.env`)
+Substitua `CHANGE_ME` pela mesma senha em `rabbitMQ/.env`, `backend/.env` e `process/.env`.
+
+### 2. Subir o Ambiente com Docker Compose
+
+```bash
+docker compose up -d --build
+```
+
+- **Aplicação Web (Gateway NGINX)**: `http://localhost`
+- **API de Arquivos**: `http://localhost/api/files`
+- **Painel do RabbitMQ (via Gateway)**: `http://localhost/message/`
+
+### 3. Executar a Suíte de Testes Automatizados
+
+```bash
+node --test backend/test/foundation.test.js process/test/router.test.js process/test/image.test.js process/test/audio.test.js
+```

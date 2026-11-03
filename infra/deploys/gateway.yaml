@@ -23,6 +23,8 @@ spec:
               value: http://frontend.internal:3000
             - name: BACKEND_UPSTREAM
               value: http://backend.internal:8000
+            - name: REPOSITORY_UPSTREAM
+              value: http://repository.default.svc.cluster.local:8001
             - name: RABBIT_UPSTREAM
               value: http://rabbit.internal:15672
             - name: CLIENT_MAX_BODY_SIZE

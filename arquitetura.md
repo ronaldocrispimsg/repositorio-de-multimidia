@@ -1,24 +1,24 @@
 # Arquitetura do VideoBox
 
-Atualizado em 2026-11-03 (Fase 4: Processamento de Áudio e Suporte a HTTP `Range`). Descreve o estado real comprovado no código.
+Atualizado em 2026-11-03 (Fase 5: Workers Separados, K3s/KEDA, Frontend Multimídia e Documentação). Descreve o estado real comprovado no código.
 
 ## Serviços (Docker Compose)
 
 | Serviço | Imagem / Pasta | Função |
 | --- | --- | --- |
 | `gateway` | `nginx/` | Único ponto de entrada público (porta `80`). Roteia `/` ao frontend, `/api/` ao backend (com `proxy_request_buffering off`), `/streams/` e `/media/` ao repository e `/message/` ao painel do RabbitMQ. |
-| `frontend` | `frontend/` | Interface estática HTML5/CSS3/JS puro, player HLS (`hls.js`). |
+| `frontend` | `frontend/` | Interface estática HTML5/CSS3/JS puro (`hls.js@1.5.17` fixado). Consome `/api/files`, faz polling inteligente a cada 3s enquanto houver itens `uploaded` ou `processing`, permite filtro por tipo e renderiza `<img>`, `<audio controls>` ou player HLS `<video>`. |
 | `backend` | `backend/` | API REST Express (`POST /files`, `GET /files`, `GET /files/:id`, `GET /files/:id/file` e aliases `/upload`, `/videos`). Faz streaming direto do upload para o SeaweedFS Filer (`raw/{file_id}/original`), persiste estado em `/data/videos_state.json` via módulo `store`, publica `file.uploaded` na exchange `media.events` e consome a fila `media.backend`. |
-| `process-router` | `process/` (`WORKER_TYPE=router`) | Worker roteador. Consome `file.uploaded`, baixa o arquivo bruto do Filer para `/tmp`, inspeciona magic bytes (`file-type`), metadados de imagem (`sharp`) e fluxos de mídia (`ffprobe`), valida limites por tipo (`MAX_IMAGE_SIZE_BYTES`, `MAX_AUDIO_SIZE_BYTES`, `MAX_VIDEO_SIZE_BYTES`) e publica `video.uploaded`, `audio.uploaded` ou `image.uploaded` (ou apaga o raw do Filer e publica `file.rejected`). |
-| `process` | `process/` (`WORKER_TYPE=video`) | Worker Node.js + FFmpeg. Consome `video.uploaded`, baixa o raw direto do Filer para `/tmp`, gera segmentos HLS em `/tmp/hls/{file_id}`, envia os artefatos para `processed/videos/{file_id}/...` no Filer e publica `video.ready` ou faz retry via DLX até publicar `video.failed`. |
-| `process-image` | `process/` (`WORKER_TYPE=image`) | Worker Node.js + `sharp`. Consome `image.uploaded`, publica `image.processing`, aplica orientação EXIF (`.rotate()`) removendo metadados EXIF, preserva canal alpha, converte para WebP (`<= 300 KB`, máx. `2048x2048` com loop de qualidades `[85, 75, 65, 55, 45]` e redução progressiva de 15% até 320px), grava em `processed/images/{file_id}.webp`, publica `image.ready` e remove o raw do Filer. |
-| `process-audio` | `process/` (`WORKER_TYPE=audio`) | Worker Node.js + `ffmpeg`/`ffprobe`. Consome `audio.uploaded`, publica `audio.processing`, extrai duração e tags (`title`, `artist`) via `ffprobe`, aplica as 3 regras de transcodificação (`mp3 <= 128k` copy `.mp3`; `aac/m4a <= 128k` copy `.m4a`; demais reencodam `-vn -c:a aac -b:a 128k -movflags +faststart` `.m4a`), grava em `processed/audio/{file_id}.{mp3|m4a}`, publica `audio.ready` e remove o raw do Filer. |
+| `process-router` | `process/` (`WORKER_TYPE=router`) | Worker roteador (`0.50 CPU / 256M`). Consome `file.uploaded`, baixa o arquivo bruto do Filer para `/tmp`, inspeciona magic bytes (`file-type`), metadados de imagem (`sharp`) e fluxos de mídia (`ffprobe`), valida limites por tipo (`MAX_IMAGE_SIZE_BYTES`, `MAX_AUDIO_SIZE_BYTES`, `MAX_VIDEO_SIZE_BYTES`) e publica `video.uploaded`, `audio.uploaded` ou `image.uploaded` (ou apaga o raw do Filer e publica `file.rejected`). |
+| `process-video` | `process/` (`WORKER_TYPE=video`) | Worker Node.js + FFmpeg (`2.00 CPU / 2G`). Consome `video.uploaded`, baixa o raw direto do Filer para `/tmp`, gera segmentos HLS em `/tmp/hls/{file_id}`, envia os artefatos para `processed/videos/{file_id}/...` no Filer, publica `video.ready` e remove o raw do Filer (ou faz retry via DLX até publicar `video.failed`). |
+| `process-image` | `process/` (`WORKER_TYPE=image`) | Worker Node.js + `sharp` (`1.00 CPU / 512M`). Consome `image.uploaded`, publica `image.processing`, aplica orientação EXIF (`.rotate()`) removendo metadados EXIF, preserva canal alpha, converte para WebP (`<= 300 KB`, máx. `2048x2048` com loop de qualidades `[85, 75, 65, 55, 45]` e redução progressiva de 15% até 320px), grava em `processed/images/{file_id}.webp`, publica `image.ready` e remove o raw do Filer. |
+| `process-audio` | `process/` (`WORKER_TYPE=audio`) | Worker Node.js + `ffmpeg`/`ffprobe` (`1.00 CPU / 512M`). Consome `audio.uploaded`, publica `audio.processing`, extrai duração e tags (`title`, `artist`) via `ffprobe`, aplica as 3 regras de transcodificação (`mp3 <= 128k` copy `.mp3`; `aac/m4a <= 128k` copy `.m4a`; demais reencodam `-vn -c:a aac -b:a 128k -movflags +faststart` `.m4a`), grava em `processed/audio/{file_id}.{mp3|m4a}`, publica `audio.ready` e remove o raw do Filer. |
 | `repository` | `repository/` | Serviço Express que serve `/streams/:videoId/*` (`processed/videos/{file_id}/...`) e `/media/*` (`processed/images/...` e `processed/audio/...`, com `Cache-Control: public, max-age=31536000, immutable` e suporte a `Range` HTTP `206 Partial Content`) fazendo proxy em streaming a partir do SeaweedFS Filer com validação `path.posix.resolve` + prefixo. |
 | `rabbitmq` | `rabbitMQ/` | Broker AMQP (`rabbitmq:3.13-management`) na rede interna. |
 | `master` | `chrislusf/seaweedfs:3.65` | Coordenador de topologia e volumes do SeaweedFS (rede interna, volume `seaweed_master_data`). |
 | `volume` | `chrislusf/seaweedfs:3.65` | Servidor de armazenamento de blocos do SeaweedFS (rede interna, volume `seaweed_volume_data`). |
 | `filer` | `chrislusf/seaweedfs:3.65` | Camada de diretórios/metadados HTTP do SeaweedFS na porta interna `8888` (volume `seaweed_filer_data`). |
-| `infra` | `infra/deploys/` | Manifestos K3s e KEDA (escala o `process` pela fila `video.uploaded`). |
+| `infra` | `infra/deploys/` | Manifestos K3s e KEDA (`process.yaml` com 4 Deployments e 4 `ScaledObjects` por fila: `file.uploaded` com `minReplicaCount: 1`, `video.uploaded`, `audio.uploaded`, `image.uploaded` com volumes `emptyDir` em `/tmp`; `gateway.yaml`; `repository.yaml`). |
 
 ## Módulos Compartilhados (`shared/`)
 

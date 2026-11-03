@@ -18,18 +18,13 @@ spec:
           image: videobox-repository:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: STREAM_PATH
-              value: /processed_videos
-            - name: STREAM_BASE_URL
-              value: http://repository.default.svc.cluster.local:8001/streams
+            - name: PORT
+              value: "8001"
+            - name: FILER_URL
+              value: "http://filer.default.svc.cluster.local:8888"
           ports:
             - containerPort: 8001
               name: http
-          volumeMounts:
-            # Monta a pasta compartilhada 'processed_videos' no container do repository
-            - name: shared-storage
-              mountPath: /processed_videos
-              subPath: processed_videos
           resources:
             requests:
               cpu: 100m
@@ -37,10 +32,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-      volumes:
-        - name: shared-storage
-          persistentVolumeClaim:
-            claimName: videobox-export-pvc
 ---
 apiVersion: v1
 kind: Service

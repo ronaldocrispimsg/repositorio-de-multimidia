@@ -100,17 +100,22 @@ services:
       FILER_URL: http://filer:8888
       TMP_DOWNLOADS: /tmp/videos_download
       CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     depends_on:
       rabbitmq:
         condition: service_healthy
       filer:
         condition: service_healthy
 
-  process:
+  process-video:
     build:
       context: .
       dockerfile: process/Dockerfile
-    container_name: videobox-process
+    container_name: videobox-process-video
     restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
@@ -120,6 +125,11 @@ services:
       TMP_HLS: /tmp/hls
       TMP_DOWNLOADS: /tmp/videos_download
       CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2G
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -139,6 +149,11 @@ services:
       FILER_URL: http://filer:8888
       TMP_DOWNLOADS: /tmp/videos_download
       CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -158,6 +173,11 @@ services:
       FILER_URL: http://filer:8888
       TMP_DOWNLOADS: /tmp/videos_download
       CLEAN_TMP: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
     depends_on:
       rabbitmq:
         condition: service_healthy

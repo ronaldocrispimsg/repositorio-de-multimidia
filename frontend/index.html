@@ -4,46 +4,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Repositório de Vídeos</title>
+  <title>VideoBox — Repositório Multimídia</title>
   <link rel="stylesheet" href="style.css">
-  <!-- hls.js permite tocar transmissões .m3u8 no player -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- hls.js fixado na versão 1.5.17 para reprodução de streams .m3u8 -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 </head>
 
 <body>
 
   <div class="container">
     <header>
-      <h1>Repositório de Vídeos</h1>
+      <h1>VideoBox</h1>
+      <p>Repositório Distribuído de Vídeos (HLS), Áudios (AAC/MP3) e Imagens (WebP ≤ 300 KB)</p>
     </header>
 
     <!-- Upload -->
     <section class="card">
-      <h2>Enviar Novo Vídeo</h2>
+      <h2>Enviar Novo Arquivo de Mídia</h2>
       <form id="uploadForm">
-        <input type="file" id="videoFileInput" accept="video/*" required>
+        <input
+          type="file"
+          id="mediaFileInput"
+          accept="video/*,audio/*,image/jpeg,image/png,image/webp"
+          required
+        >
         <button type="submit" id="uploadBtn">Enviar</button>
       </form>
       <div id="uploadStatus" class="status-msg"></div>
     </section>
 
-    <!-- Player -->
+    <!-- Visualizador / Player Multimídia -->
     <section class="card">
-      <h2>Player de Vídeo</h2>
-      <p id="playerCurrent">Selecione um vídeo pronto na lista abaixo para reproduzir.</p>
-      <div class="video-wrapper">
+      <h2>Visualizador de Mídia</h2>
+      <p id="playerCurrent">Selecione uma mídia pronta na lista abaixo para reproduzir ou visualizar.</p>
+
+      <!-- Player de Vídeo HLS -->
+      <div id="videoContainer" class="media-viewer-box" style="display: none;">
         <video id="videoPlayer" controls playsinline></video>
+      </div>
+
+      <!-- Player de Áudio -->
+      <div id="audioContainer" class="media-viewer-box audio-box" style="display: none;">
+        <p id="audioMetaInfo" class="audio-meta"></p>
+        <audio id="audioPlayer" controls preload="metadata"></audio>
+      </div>
+
+      <!-- Visualizador de Imagem WebP -->
+      <div id="imageContainer" class="media-viewer-box image-box" style="display: none;">
+        <img id="imageViewer" alt="Visualização da imagem processada" loading="lazy">
+        <p id="imageMetaInfo" class="image-meta"></p>
       </div>
     </section>
 
-    <!-- Lista de Vídeos -->
+    <!-- Lista de Mídias -->
     <section class="card">
       <div class="card-header">
-        <h2>Vídeos Cadastrados</h2>
-        <button type="button" id="refreshBtn">Atualizar Lista</button>
+        <h2>Arquivos Cadastrados</h2>
+        <div class="header-controls">
+          <select id="typeFilter" aria-label="Filtrar por tipo de mídia">
+            <option value="">Todos os tipos</option>
+            <option value="video">Vídeos</option>
+            <option value="audio">Áudios</option>
+            <option value="image">Imagens</option>
+          </select>
+          <button type="button" id="refreshBtn">Atualizar Lista</button>
+        </div>
       </div>
       <div id="videoListContainer">
-        <p id="loadingMsg">Carregando vídeos...</p>
+        <p id="loadingMsg">Carregando arquivos...</p>
         <ul id="videoList" class="video-list"></ul>
       </div>
     </section>
