@@ -52,6 +52,7 @@ services:
   rabbitmq:
     build: ./rabbitMQ
     container_name: videobox-rabbitmq
+    restart: unless-stopped
     env_file: ./rabbitMQ/.env
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -64,6 +65,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: videobox-backend
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./backend/.env
     environment:
@@ -80,18 +82,40 @@ services:
   frontend:
     build: ./frontend
     container_name: videobox-frontend
+    restart: unless-stopped
     env_file: ./frontend/.env
     depends_on:
       - backend
+
+  process-router:
+    build:
+      context: .
+      dockerfile: process/Dockerfile
+    container_name: videobox-process-router
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: ./process/.env
+    environment:
+      WORKER_TYPE: router
+      FILER_URL: http://filer:8888
+      TMP_DOWNLOADS: /tmp/videos_download
+      CLEAN_TMP: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      filer:
+        condition: service_healthy
 
   process:
     build:
       context: .
       dockerfile: process/Dockerfile
     container_name: videobox-process
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./process/.env
     environment:
+      WORKER_TYPE: video
       FILER_URL: http://filer:8888
       TMP_HLS: /tmp/hls
       TMP_DOWNLOADS: /tmp/videos_download
@@ -107,6 +131,7 @@ services:
       context: .
       dockerfile: repository/Dockerfile
     container_name: videobox-repository
+    restart: unless-stopped
     user: "1000:1000"
     env_file: ./repository/.env
     environment:
@@ -122,6 +147,7 @@ services:
   gateway:
     build: ./nginx
     container_name: videobox-gateway
+    restart: unless-stopped
     env_file: ./nginx/.env
     environment:
       REPOSITORY_UPSTREAM: http://repository:8001

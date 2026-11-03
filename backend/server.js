@@ -23,7 +23,10 @@ if (!RABBIT_URL) {
   process.exit(1);
 }
 
-const MAX_UPLOAD_BYTES = Number(process.env.MAX_VIDEO_SIZE_BYTES || 2 * 1024 * 1024 * 1024); // 2 GB padrão
+const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_SIZE_BYTES || 20 * 1024 * 1024);
+const MAX_AUDIO_BYTES = Number(process.env.MAX_AUDIO_SIZE_BYTES || 200 * 1024 * 1024);
+const MAX_VIDEO_BYTES = Number(process.env.MAX_VIDEO_SIZE_BYTES || 2 * 1024 * 1024 * 1024);
+const MAX_UPLOAD_BYTES = Math.max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_VIDEO_BYTES);
 
 app.use(cors());
 app.use(express.json());
@@ -31,6 +34,13 @@ app.use(express.json());
 const store = createStore();
 
 let amqpChannel = null;
+
+function guessInitialType(mimeType = '') {
+  const m = String(mimeType || '').toLowerCase();
+  if (m.startsWith('image/')) return 'image';
+  if (m.startsWith('audio/')) return 'audio';
+  return 'video';
+}
 
 async function setupRabbitMQ() {
   while (true) {
@@ -65,7 +75,7 @@ async function setupRabbitMQ() {
           console.log(`[backend] Evento recebido (${msg.fields.routingKey}): ${fileId} -> ${event.status}`);
 
           await store.upsert(fileId, {
-            type: event.type || 'video',
+            type: event.type !== undefined ? event.type : undefined,
             filename: event.filename,
             storage_key: event.storage_key,
             mime_type: event.mime_type,
@@ -155,38 +165,37 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Listar todos os vídeos (e alias para itens de mídia)
-app.get('/videos', (req, res) => {
+function handleListFiles(req, res) {
   res.json(store.list());
-});
+}
 
-// Detalhes de um vídeo
-app.get('/videos/:videoId', (req, res) => {
-  const video = store.get(req.params.videoId);
-  if (!video) {
-    return res.status(404).json({ detail: 'Vídeo não encontrado' });
+function handleGetFile(req, res) {
+  const fileId = req.params.id || req.params.videoId;
+  const item = store.get(fileId);
+  if (!item) {
+    return res.status(404).json({ detail: 'Arquivo não encontrado' });
   }
-  res.json(video);
-});
+  res.json(item);
+}
 
-// Download do arquivo bruto direto do Filer em streaming
-app.get('/videos/:videoId/file', async (req, res) => {
+async function handleDownloadRawFile(req, res) {
   try {
-    const video = store.get(req.params.videoId);
-    if (!video || !video.storage_key) {
-      return res.status(404).json({ detail: 'Vídeo não encontrado' });
+    const fileId = req.params.id || req.params.videoId;
+    const item = store.get(fileId);
+    if (!item || !item.storage_key) {
+      return res.status(404).json({ detail: 'Arquivo não encontrado' });
     }
 
-    const { stream, status, headers } = await storage.getStream(video.storage_key, {
+    const { stream, status, headers } = await storage.getStream(item.storage_key, {
       validateStatus: (s) => (s >= 200 && s < 300) || s === 404,
     });
 
     if (status === 404) {
-      return res.status(410).json({ detail: 'Arquivo indisponível' });
+      return res.status(410).json({ detail: 'Arquivo bruto indisponível' });
     }
 
-    const safeName = storage.sanitizeFilename(video.filename || `${video.file_id}.mp4`);
-    res.setHeader('Content-Type', video.mime_type || headers['content-type'] || 'application/octet-stream');
+    const safeName = storage.sanitizeFilename(item.filename || `${item.file_id}`);
+    res.setHeader('Content-Type', item.mime_type || headers['content-type'] || 'application/octet-stream');
     if (headers['content-length']) {
       res.setHeader('Content-Length', headers['content-length']);
     }
@@ -206,10 +215,9 @@ app.get('/videos/:videoId/file', async (req, res) => {
     console.error('[backend] Erro ao baixar arquivo bruto:', err.message);
     res.status(500).json({ error: 'Falha ao buscar arquivo no storage.' });
   }
-});
+}
 
-// Upload de vídeo (Fase 1: publica video.uploaded com payload padrão e grava raw no Filer)
-app.post('/upload', upload.single('file'), async (req, res) => {
+async function handleUploadFile(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
@@ -224,9 +232,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     } = req.file;
 
     const occurredAt = new Date().toISOString();
+    const initialType = guessInitialType(mimeType);
 
     const { item } = await store.upsert(fileId, {
-      type: 'video',
+      type: initialType,
       filename: sanitizedFilename,
       storage_key: storageKey,
       mime_type: mimeType,
@@ -234,14 +243,14 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       status: 'uploaded',
       result: null,
       error: null,
-      download_url: `/api/videos/${fileId}/file`,
+      download_url: `/api/files/${fileId}/file`,
       occurred_at: occurredAt,
     });
 
     if (amqpChannel) {
-      publishEvent(amqpChannel, EVENTS.VIDEO_UPLOADED, {
+      publishEvent(amqpChannel, EVENTS.FILE_UPLOADED, {
         file_id: fileId,
-        type: 'video',
+        type: initialType,
         filename: sanitizedFilename,
         storage_key: storageKey,
         mime_type: mimeType,
@@ -260,12 +269,40 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     console.error('[backend] Erro no upload:', error);
     res.status(500).json({ error: error.message });
   }
+}
+
+// Rotas principais (/files) e aliases de compatibilidade (/videos e /upload)
+app.get('/files', handleListFiles);
+app.get('/videos', handleListFiles);
+
+app.get('/files/:id', handleGetFile);
+app.get('/videos/:videoId', handleGetFile);
+
+app.get('/files/:id/file', handleDownloadRawFile);
+app.get('/videos/:videoId/file', handleDownloadRawFile);
+
+app.post('/files', upload.single('file'), handleUploadFile);
+app.post('/upload', upload.single('file'), handleUploadFile);
+
+// Tratamento de erro do Multer (ex.: LIMIT_FILE_SIZE)
+app.use((err, req, res, next) => {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Arquivo excede o limite máximo permitido no upload.' });
+  }
+  if (err) {
+    console.error('[backend] Erro na requisição:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+  next();
 });
 
-setupRabbitMQ();
+if (require.main === module) {
+  setupRabbitMQ();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[backend] Servidor rodando na porta ${PORT}`);
+    console.log(`[backend] Filer URL: ${storage.filerUrl}`);
+    console.log(`[backend] Arquivo de estado: ${store.stateFile}`);
+  });
+}
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[backend] Servidor rodando na porta ${PORT}`);
-  console.log(`[backend] Filer URL: ${storage.filerUrl}`);
-  console.log(`[backend] Arquivo de estado: ${store.stateFile}`);
-});
+module.exports = app;
